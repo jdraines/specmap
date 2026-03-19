@@ -33,5 +33,9 @@ htmlcov/
 .coverage
 coverage.out
 
+# Documentation
+docs/.venv/
+site/
+
 # Node (web/ phase 2+)
 node_modules/

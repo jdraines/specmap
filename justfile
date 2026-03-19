@@ -48,6 +48,28 @@ cli-vet:
 cli-run *ARGS:
     cd cli && go run . {{ARGS}}
 
+# --- Documentation ---
+
+# Install docs dependencies
+docs-install:
+    uv venv docs/.venv && uv pip install -r docs/requirements.txt --python docs/.venv/bin/python
+
+# Serve docs locally
+docs-serve:
+    docs/.venv/bin/mkdocs serve
+
+# Build docs (strict mode)
+docs-build:
+    docs/.venv/bin/mkdocs build --strict
+
+# Deploy docs version (e.g., just docs-deploy 0.1)
+docs-deploy VERSION:
+    docs/.venv/bin/mike deploy --push --update-aliases {{VERSION}} latest
+
+# List deployed doc versions
+docs-versions:
+    docs/.venv/bin/mike list
+
 # --- Combined ---
 
 # Run all tests

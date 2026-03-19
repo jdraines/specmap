@@ -1,0 +1,78 @@
+site_name: Specmap
+site_description: Map AI-generated code changes back to spec intent
+site_url: https://specmap.dev
+repo_url: https://github.com/specmap/specmap
+repo_name: specmap/specmap
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - def_list
+
+plugins:
+  - search
+
+extra:
+  version:
+    provider: mike
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - MCP Server:
+      - Overview: mcp/overview.md
+      - Tools Reference: mcp/tools.md
+      - LLM Integration: mcp/llm.md
+  - CLI:
+      - Overview: cli/overview.md
+      - Commands Reference: cli/commands.md
+      - CI Integration: cli/ci.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+      - Specmap Format: concepts/format.md
+      - Hashing & Reindexing: concepts/hashing.md
+      - Coverage: concepts/coverage.md
+  - Roadmap: roadmap.md
