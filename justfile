@@ -4,49 +4,37 @@
 default:
     @just --list
 
-# --- Python MCP Server ---
+# --- Python Core (MCP server, CLI, shared library) ---
 
 # Install Python dependencies
 mcp-install:
-    cd mcp && uv sync
+    cd core && uv sync
 
 # Run MCP server (stdio mode)
 mcp-run:
-    cd mcp && uv run python -m specmap_mcp
+    cd core && uv run python -m specmap.mcp
 
-# Run Python tests
+# Run Python unit tests
 mcp-test *ARGS:
-    cd mcp && uv run pytest {{ARGS}}
+    cd core && uv run pytest {{ARGS}}
 
 # Run Python tests with coverage
 mcp-test-cov:
-    cd mcp && uv run pytest --cov=specmap_mcp --cov-report=term-missing
+    cd core && uv run pytest --cov=specmap --cov-report=term-missing
 
 # Lint Python
 mcp-lint:
-    cd mcp && uv run ruff check src/ tests/
+    cd core && uv run ruff check src/ tests/
 
 # Format Python
 mcp-fmt:
-    cd mcp && uv run ruff format src/ tests/
+    cd core && uv run ruff format src/ tests/
 
-# --- Go CLI ---
-
-# Build CLI binary
-cli-build:
-    cd cli && go build -o specmap .
-
-# Run Go tests
-cli-test *ARGS:
-    cd cli && go test ./... {{ARGS}}
-
-# Vet Go code
-cli-vet:
-    cd cli && go vet ./...
+# --- CLI ---
 
 # Run CLI command
 cli-run *ARGS:
-    cd cli && go run . {{ARGS}}
+    cd core && uv run python -m specmap.cli {{ARGS}}
 
 # --- Documentation ---
 
@@ -70,10 +58,23 @@ docs-deploy VERSION:
 docs-versions:
     docs/.venv/bin/mike list
 
+# --- Functional Tests ---
+
+# Run functional test suite
+functional-test *ARGS:
+    cd core && uv run pytest ../tests -o asyncio_mode=auto {{ARGS}}
+
+# Run fast functional tests (skip slow)
+functional-test-fast *ARGS:
+    cd core && uv run pytest ../tests -o asyncio_mode=auto -m "not slow" {{ARGS}}
+
 # --- Combined ---
 
-# Run all tests
-test: mcp-test cli-test
+# Run all unit tests
+test: mcp-test
+
+# Run all tests including functional
+test-all: mcp-test functional-test
 
 # Run all lints
-lint: mcp-lint cli-vet
+lint: mcp-lint

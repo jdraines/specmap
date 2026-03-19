@@ -19,19 +19,18 @@ jobs:
         with:
           fetch-depth: 0  # Full history needed for git diff
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
+      - uses: astral-sh/setup-uv@v5
 
-      - name: Build Specmap CLI
-        run: cd cli && go build -o specmap .
+      - name: Install dependencies
+        run: cd core && uv sync
 
       - name: Check spec coverage
         run: |
-          ./cli/specmap check \
+          cd core && uv run python -m specmap.cli \
+            --no-color \
+            check \
             --threshold 0.80 \
-            --base origin/main \
-            --no-color
+            --base origin/main
 ```
 
 ## Key Flags for CI
@@ -51,11 +50,12 @@ Parse the JSON output to post coverage summaries as PR comments or feed into oth
       - name: Check spec coverage (JSON)
         id: coverage
         run: |
-          ./cli/specmap check \
+          cd core && uv run python -m specmap.cli \
+            --no-color \
+            check \
             --threshold 0.80 \
             --base origin/main \
-            --json \
-            --no-color > coverage.json
+            --json > coverage.json
 
       - name: Post coverage summary
         if: always()
