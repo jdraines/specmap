@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+.eggs/
+
+# Go
+cli/specmap
+cli/specmap-cli
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Specmap local config (may contain API keys)
+.specmap/config.json
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Test / Coverage
+htmlcov/
+.coverage
+coverage.out
+
+# Node (web/ phase 2+)
+node_modules/
