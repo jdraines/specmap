@@ -6,9 +6,7 @@ dist/
 .venv/
 .eggs/
 
-# Go
-cli/specmap
-cli/specmap-cli
+# Go (removed — CLI is now Python)
 
 # IDE
 .idea/
@@ -32,6 +30,8 @@ Thumbs.db
 htmlcov/
 .coverage
 coverage.out
+tests/__pycache__/
+tests/**/__pycache__/
 
 # Documentation
 docs/.venv/

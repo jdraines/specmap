@@ -75,4 +75,5 @@ nav:
       - Specmap Format: concepts/format.md
       - Hashing & Reindexing: concepts/hashing.md
       - Coverage: concepts/coverage.md
+  - Development: development.md
   - Roadmap: roadmap.md
