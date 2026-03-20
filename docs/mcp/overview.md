@@ -1,6 +1,6 @@
 # MCP Server Overview
 
-The Specmap MCP server bridges coding agents to the specmap system via the [Model Context Protocol](https://modelcontextprotocol.io/) stdio transport. It runs alongside your coding agent and provides three tools for generating, validating, and querying spec-to-code annotations.
+The Specmap MCP server bridges coding agents to the specmap system via the [Model Context Protocol](https://modelcontextprotocol.io/) stdio transport. It runs alongside your coding agent and provides two tools for generating and validating spec-to-code annotations.
 
 ## What It Does
 
@@ -17,7 +17,6 @@ When a coding agent writes or modifies code, the MCP server:
 |---|---|---|
 | [`specmap_annotate`](tools.md#specmap_annotate) | Generate annotations with spec references for code changes | Yes |
 | [`specmap_check`](tools.md#specmap_check) | Verify existing annotations have valid line ranges | No |
-| [`specmap_unmapped`](tools.md#specmap_unmapped) | Find code changes without spec coverage | No |
 
 ## BYOK -- Bring Your Own Key
 

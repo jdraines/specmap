@@ -23,6 +23,7 @@ class Mapper:
         self,
         changes: list[CodeChange],
         spec_contents: dict[str, str],
+        context: str | None = None,
     ) -> list[Annotation]:
         """Generate annotations for code changes.
 
@@ -55,7 +56,7 @@ class Mapper:
                 for c in file_changes
             ]
 
-            messages = build_annotation_prompt(code_change_dicts, spec_sections)
+            messages = build_annotation_prompt(code_change_dicts, spec_sections, context=context)
 
             try:
                 result = await self.llm.complete(

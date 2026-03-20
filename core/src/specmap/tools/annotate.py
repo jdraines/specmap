@@ -11,8 +11,10 @@ from specmap.indexer.code_analyzer import CodeAnalyzer
 from specmap.indexer.diff_optimizer import (
     classify_annotations,
     parse_incremental_diff,
+    reclassify_for_spec_changes,
     shift_annotations,
 )
+from specmap.indexer.hasher import hash_content
 from specmap.indexer.mapper import Mapper
 from specmap.llm.client import LLMClient
 from specmap.state.specmap_file import SpecmapFileManager
@@ -23,6 +25,7 @@ async def annotate(
     code_changes: list[str] | None = None,
     spec_files: list[str] | None = None,
     branch: str | None = None,
+    context: str | None = None,
 ) -> dict:
     """Generate annotations for code changes with spec references.
 
@@ -31,6 +34,7 @@ async def annotate(
         code_changes: Specific file paths to analyze (None = auto-detect from git diff)
         spec_files: Specific spec files to use (None = auto-discover)
         branch: Branch name (None = auto-detect)
+        context: Optional freeform context from the development session
 
     Returns:
         Summary dict with annotations created and coverage info
@@ -69,7 +73,7 @@ async def annotate(
         # Incremental mode: diff from previous head
         result = await _incremental_annotate(
             repo_root, config, specmap, analyzer, spec_contents,
-            previous_head, current_head, file_mgr,
+            previous_head, current_head, file_mgr, context=context,
         )
         if result is not None:
             return result
@@ -109,7 +113,7 @@ async def annotate(
     # 6. Call Mapper
     llm_client = LLMClient(config)
     mapper = Mapper(llm_client, repo_root)
-    new_annotations = await mapper.annotate_changes(changes, spec_contents)
+    new_annotations = await mapper.annotate_changes(changes, spec_contents, context=context)
 
     # 7. Merge new annotations with existing
     # Remove old annotations for files being re-annotated
@@ -150,6 +154,7 @@ async def _incremental_annotate(
     previous_head: str,
     current_head: str,
     file_mgr: SpecmapFileManager,
+    context: str | None = None,
 ) -> dict | None:
     """Try incremental annotation using diff from previous head.
 
@@ -178,6 +183,12 @@ async def _incremental_annotate(
 
     # Classify existing annotations
     classified = classify_annotations(specmap.annotations, file_hunks)
+
+    # Detect spec files that changed between pushes — annotations citing
+    # changed specs need regeneration even if their code didn't change.
+    changed_specs = _detect_changed_specs(repo_root, previous_head, spec_contents)
+    if changed_specs:
+        classified = reclassify_for_spec_changes(classified, changed_specs)
 
     # Shift non-overlapping annotations mechanically
     shifted = shift_annotations(classified.shift, file_hunks)
@@ -213,7 +224,7 @@ async def _incremental_annotate(
     if changes:
         llm_client = LLMClient(config)
         mapper = Mapper(llm_client, repo_root)
-        new_annotations = await mapper.annotate_changes(changes, spec_contents)
+        new_annotations = await mapper.annotate_changes(changes, spec_contents, context=context)
         llm_usage = llm_client.get_usage()
 
     # Merge: keep + shifted + new (replacing regenerated)
@@ -225,7 +236,7 @@ async def _incremental_annotate(
     specmap.head_sha = current_head
     file_mgr.save(specmap)
 
-    return {
+    result = {
         "status": "ok",
         "annotations_created": len(new_annotations),
         "annotations_updated": 0,
@@ -239,6 +250,9 @@ async def _incremental_annotate(
         "llm_usage": llm_usage,
         "branch": specmap.branch,
     }
+    if changed_specs:
+        result["specs_changed"] = sorted(changed_specs)
+    return result
 
 
 def _get_head_sha(repo_root: str) -> str:
@@ -262,6 +276,47 @@ def _get_incremental_diff(repo_root: str, old_sha: str, new_sha: str) -> str | N
     try:
         result = subprocess.run(
             ["git", "diff", f"{old_sha}..{new_sha}"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return result.stdout
+    except FileNotFoundError:
+        pass
+    return None
+
+
+def _detect_changed_specs(
+    repo_root: str,
+    previous_head: str,
+    current_spec_contents: dict[str, str],
+) -> set[str]:
+    """Detect spec files that changed between previous_head and current working tree.
+
+    Compares the hash of each spec file at previous_head (via git show) with its
+    current content. Returns the set of spec file paths that differ.
+    """
+    changed: set[str] = set()
+
+    for spec_file, current_content in current_spec_contents.items():
+        old_content = _git_show_file(repo_root, previous_head, spec_file)
+        if old_content is None:
+            # File didn't exist at previous_head — it's new, but annotations
+            # can't have refs to a spec that didn't exist, so skip.
+            continue
+
+        if hash_content(old_content) != hash_content(current_content):
+            changed.add(spec_file)
+
+    return changed
+
+
+def _git_show_file(repo_root: str, commit: str, file_path: str) -> str | None:
+    """Get file content at a specific commit via git show. Returns None on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "show", f"{commit}:{file_path}"],
             cwd=repo_root,
             capture_output=True,
             text=True,

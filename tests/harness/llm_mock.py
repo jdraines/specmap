@@ -71,6 +71,13 @@ class LLMMockRegistry:
     def calls(self) -> list[dict]:
         return list(self._call_log)
 
+    @property
+    def last_messages(self) -> list[dict] | None:
+        """Return the messages from the most recent LLM call, or None."""
+        if not self._call_log:
+            return None
+        return self._call_log[-1].get("messages")
+
     # --- the mock itself ---
 
     async def mock_acompletion(self, **kwargs):

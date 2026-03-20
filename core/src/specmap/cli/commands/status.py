@@ -57,4 +57,4 @@ def status(ctx: typer.Context):
                 desc = ann.description[:80] + "..." if len(ann.description) > 80 else ann.description
                 console.print(f"    L{ann.start_line}-{ann.end_line}: {desc}")
 
-    console.print("\nCoverage: see 'specmap check' for coverage details")
+    console.print("\nRun 'specmap validate' to verify annotation line ranges.")

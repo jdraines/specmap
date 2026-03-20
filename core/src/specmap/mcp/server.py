@@ -12,7 +12,6 @@ from mcp.types import TextContent, Tool
 from specmap.config import _detect_repo_root
 from specmap.tools.annotate import annotate
 from specmap.tools.check_sync import check_sync
-from specmap.tools.get_unmapped import get_unmapped_changes
 
 
 def create_server() -> Server:
@@ -62,6 +61,14 @@ def create_server() -> Server:
                             "type": "string",
                             "description": "Branch name. Auto-detected if not provided.",
                         },
+                        "context": {
+                            "type": "string",
+                            "description": (
+                                "Optional freeform context from the development session "
+                                "(e.g. design decisions, constraints, instructions) that "
+                                "the LLM uses to write better annotation descriptions."
+                            ),
+                        },
                     },
                     "required": [],
                 },
@@ -92,42 +99,6 @@ def create_server() -> Server:
                     "required": [],
                 },
             ),
-            Tool(
-                name="specmap_unmapped",
-                description=(
-                    "Find code changes without spec coverage. Returns unmapped line ranges "
-                    "and per-file/overall coverage percentages. Coverage is calculated as "
-                    "lines in annotations with spec refs / total changed lines."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "repo_root": {
-                            "type": "string",
-                            "description": "Path to the repository root.",
-                        },
-                        "branch": {
-                            "type": "string",
-                            "description": "Branch name. Auto-detected if not provided.",
-                        },
-                        "base_branch": {
-                            "type": "string",
-                            "description": (
-                                "Base branch for diff comparison. "
-                                "Auto-detected if not provided."
-                            ),
-                        },
-                        "threshold": {
-                            "type": "number",
-                            "description": (
-                                "Minimum coverage ratio (0.0-1.0). "
-                                "Only files below this threshold are reported."
-                            ),
-                        },
-                    },
-                    "required": [],
-                },
-            ),
         ]
 
     @server.call_tool()
@@ -149,19 +120,13 @@ def create_server() -> Server:
                     code_changes=arguments.get("code_changes"),
                     spec_files=arguments.get("spec_files"),
                     branch=arguments.get("branch"),
+                    context=arguments.get("context"),
                 )
             elif name == "specmap_check":
                 result = await check_sync(
                     repo_root=repo_root,
                     branch=arguments.get("branch"),
                     files=arguments.get("files"),
-                )
-            elif name == "specmap_unmapped":
-                result = await get_unmapped_changes(
-                    repo_root=repo_root,
-                    branch=arguments.get("branch"),
-                    base_branch=arguments.get("base_branch"),
-                    threshold=arguments.get("threshold"),
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}

@@ -1,69 +1,28 @@
-# Coverage
+# Annotations
 
-Spec coverage measures how much of your changed code has been annotated with spec references. It's the core metric that Specmap enforces in CI.
+Annotations are the core output of Specmap — natural-language descriptions of code regions with `[N]` inline citations linking to spec documents.
 
-## Definition
+## What an Annotation Contains
 
-```
-coverage = covered changed lines / total changed lines
-```
+Each annotation includes:
 
-Both values are computed against the **base branch** (typically `main`) using `git diff`.
+- **file** -- the code file path
+- **start_line / end_line** -- the line range in the code
+- **description** -- natural language description with `[N]` spec references inline
+- **refs** -- list of spec references, each pointing to a specific heading and excerpt in a spec file
 
-## Coverage Categories
+## How Annotations Are Generated
 
-Changed lines fall into three categories:
+1. **Get changed files** -- `git diff` against the base branch identifies modified code
+2. **Read specs** -- markdown spec files are discovered and parsed into sections
+3. **LLM annotation** -- code changes and spec sections are sent to the LLM, which generates descriptions with spec citations
+4. **Persist** -- annotations are written to `.specmap/{branch}.json`
 
-| Category | Condition | Counts as covered? |
-|---|---|---|
-| **Covered** | Line is within an annotation that has non-empty `refs` | Yes |
-| **Described** | Line is within an annotation that has empty `refs` | No |
-| **Unmapped** | Line has no annotation at all | No |
+## Validation
 
-Only lines in annotations with spec references (`refs`) count toward coverage.
+The `specmap validate` CLI command and `specmap_check` MCP tool verify that annotations are structurally valid:
 
-## Per-File and Overall
+- Referenced files exist in the repo
+- Line ranges are within the file's actual line count
 
-Coverage is calculated at two levels:
-
-- **Per-file** -- each changed file gets its own coverage ratio
-- **Overall** -- total covered lines across all files / total changed lines across all files
-
-The `specmap check` command reports both, and the `--threshold` flag applies to the overall coverage.
-
-## How It's Calculated
-
-1. **Get changed files** -- run `git diff -U0 base...HEAD` to find all files with changes and their exact line ranges.
-
-2. **Load annotations** -- read `.specmap/{branch}.json` to get all annotations (file + line range + refs).
-
-3. **Intersect** -- for each changed file, check which changed line ranges overlap with annotations that have non-empty `refs`. A changed line is "covered" if any annotation with refs covers it.
-
-4. **Compute ratio** -- divide covered changed lines by total changed lines.
-
-**Special case:** if there are no changed files (e.g., the branch is identical to the base), coverage is `1.0` (100%) -- there's nothing to cover.
-
-## Threshold Enforcement
-
-The `--threshold` flag on `specmap check` sets the minimum acceptable coverage:
-
-```bash
-# Require at least 80% coverage
-specmap check --threshold 0.80
-```
-
-| Coverage | Threshold | Result | Exit code |
-|---|---|---|---|
-| 0.85 | 0.80 | PASS | 0 |
-| 0.75 | 0.80 | FAIL | 1 |
-| 1.00 | 0.00 | PASS | 0 |
-
-### Recommended Thresholds
-
-| Stage | Threshold | Rationale |
-|---|---|---|
-| Early adoption | `0.50` | Get the workflow going without blocking PRs |
-| Established | `0.80` | Most code should have spec coverage |
-| Strict | `0.95` | Nearly everything must be spec-annotated |
-
-Start low and ratchet up as your team builds the habit of writing specs alongside code.
+This ensures annotations stay in sync with the code as it evolves.

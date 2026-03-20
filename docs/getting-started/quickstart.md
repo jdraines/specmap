@@ -1,6 +1,6 @@
 # Quick Start
 
-This walkthrough takes you from zero to a validated spec-annotated codebase in five steps.
+This walkthrough takes you from zero to a validated spec-annotated codebase in four steps.
 
 ## Step 1: Write a Spec
 
@@ -79,18 +79,4 @@ specmap validate
 Validation: 3/3 passed
 ```
 
-## Step 5: Enforce in CI
-
-Add a coverage check to your CI pipeline:
-
-```bash
-specmap check --threshold 0.80
-```
-
-```
-specmap: checking coverage for feature/add-auth (base: main)
-Files: 2/2 covered | Lines: 65/65 covered
-Overall: 100.0% (threshold: 80.0%) -- PASS
-```
-
-If coverage drops below the threshold, the command exits with code 1, failing your CI check. See [CI Integration](../cli/ci.md) for a full GitHub Actions example.
+For CI integration, see [CI Integration](../cli/ci.md).
