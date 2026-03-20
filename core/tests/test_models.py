@@ -3,29 +3,25 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 from specmap.state.models import (
-    CodeTarget,
-    Mapping,
-    SpecDocument,
+    Annotation,
     SpecmapFile,
-    SpecSection,
-    SpecSpan,
-    _generate_mapping_id,
+    SpecRef,
+    _generate_annotation_id,
 )
 
 
-def test_mapping_id_format():
-    """Generated mapping ID should start with m_ and have 12 hex chars."""
-    mid = _generate_mapping_id()
-    assert mid.startswith("m_")
-    assert len(mid) == 14  # "m_" + 12 chars
+def test_annotation_id_format():
+    """Generated annotation ID should start with a_ and have 12 hex chars."""
+    aid = _generate_annotation_id()
+    assert aid.startswith("a_")
+    assert len(aid) == 14  # "a_" + 12 chars
 
 
-def test_mapping_id_uniqueness():
+def test_annotation_id_uniqueness():
     """Generated IDs should be unique."""
-    ids = {_generate_mapping_id() for _ in range(100)}
+    ids = {_generate_annotation_id() for _ in range(100)}
     assert len(ids) == 100
 
 
@@ -37,8 +33,8 @@ def test_specmap_file_round_trip(sample_specmap: SpecmapFile):
     assert restored.version == sample_specmap.version
     assert restored.branch == sample_specmap.branch
     assert restored.base_branch == sample_specmap.base_branch
-    assert len(restored.mappings) == len(sample_specmap.mappings)
-    assert len(restored.spec_documents) == len(sample_specmap.spec_documents)
+    assert restored.head_sha == sample_specmap.head_sha
+    assert len(restored.annotations) == len(sample_specmap.annotations)
 
 
 def test_specmap_file_json_structure(sample_specmap: SpecmapFile):
@@ -47,40 +43,41 @@ def test_specmap_file_json_structure(sample_specmap: SpecmapFile):
     assert "version" in data
     assert "branch" in data
     assert "base_branch" in data
+    assert "head_sha" in data
     assert "updated_at" in data
     assert "updated_by" in data
-    assert "spec_documents" in data
-    assert "mappings" in data
+    assert "annotations" in data
     assert "ignore_patterns" in data
 
 
-def test_mapping_defaults():
-    """Mapping should have sensible defaults."""
-    m = Mapping(
-        code_target=CodeTarget(
-            file="test.go",
-            start_line=1,
-            end_line=10,
-            content_hash="sha256:abcdef0123456789",
-        ),
+def test_annotation_defaults():
+    """Annotation should have sensible defaults."""
+    a = Annotation(
+        file="test.go",
+        start_line=1,
+        end_line=10,
+        description="Test annotation",
     )
-    assert m.id.startswith("m_")
-    assert m.stale is False
-    assert m.spec_spans == []
-    assert m.created_at is not None
+    assert a.id.startswith("a_")
+    assert a.refs == []
+    assert a.created_at is not None
 
 
-def test_spec_span_relevance_bounds():
-    """SpecSpan relevance should be between 0 and 1."""
-    span = SpecSpan(
+def test_spec_ref_fields():
+    """SpecRef should serialize all fields."""
+    ref = SpecRef(
+        id=1,
         spec_file="test.md",
-        heading_path=["A"],
-        span_offset=0,
-        span_length=10,
-        span_hash="sha256:0000000000000000",
-        relevance=0.5,
+        heading="Token Storage",
+        start_line=5,
+        excerpt="Tokens are stored securely.",
     )
-    assert span.relevance == 0.5
+    data = json.loads(ref.model_dump_json())
+    assert data["id"] == 1
+    assert data["spec_file"] == "test.md"
+    assert data["heading"] == "Token Storage"
+    assert data["start_line"] == 5
+    assert data["excerpt"] == "Tokens are stored securely."
 
 
 def test_specmap_file_empty():
@@ -88,24 +85,30 @@ def test_specmap_file_empty():
     sf = SpecmapFile()
     json_str = sf.model_dump_json()
     restored = SpecmapFile.model_validate_json(json_str)
-    assert restored.version == 1
-    assert restored.mappings == []
-    assert restored.spec_documents == {}
+    assert restored.version == 2
+    assert restored.annotations == []
+    assert restored.head_sha == ""
 
 
-def test_spec_document_sections():
-    """SpecDocument with sections should round-trip."""
-    doc = SpecDocument(
-        doc_hash="sha256:abcdef0123456789",
-        sections={
-            "A > B": SpecSection(
-                heading_path=["A", "B"],
-                heading_line=10,
-                section_hash="sha256:1234567890abcdef",
+def test_annotation_with_refs():
+    """Annotation with refs should round-trip."""
+    ann = Annotation(
+        file="src/main.go",
+        start_line=1,
+        end_line=20,
+        description="Implements auth with AES-256. [1]",
+        refs=[
+            SpecRef(
+                id=1,
+                spec_file="docs/spec.md",
+                heading="Authentication > Encryption",
+                start_line=10,
+                excerpt="All tokens are encrypted at rest using AES-256-GCM.",
             ),
-        },
+        ],
     )
-    json_str = doc.model_dump_json()
-    restored = SpecDocument.model_validate_json(json_str)
-    assert "A > B" in restored.sections
-    assert restored.sections["A > B"].heading_path == ["A", "B"]
+    json_str = ann.model_dump_json()
+    restored = Annotation.model_validate_json(json_str)
+    assert len(restored.refs) == 1
+    assert restored.refs[0].heading == "Authentication > Encryption"
+    assert restored.description == "Implements auth with AES-256. [1]"

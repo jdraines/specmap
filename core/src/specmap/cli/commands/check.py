@@ -30,14 +30,6 @@ class UnmappedFile:
 
 
 @dataclass
-class StaleMapping:
-    file: str
-    start_line: int
-    end_line: int
-    reason: str
-
-
-@dataclass
 class CoverageReport:
     branch: str = ""
     base_branch: str = ""
@@ -47,13 +39,10 @@ class CoverageReport:
     mapped_lines: int = 0
     coverage: float = 0.0
     unmapped: list[UnmappedFile] | None = None
-    stale: list[StaleMapping] | None = None
 
     def __post_init__(self):
         if self.unmapped is None:
             self.unmapped = []
-        if self.stale is None:
-            self.stale = []
 
 
 def _changed_files(repo_root: str, base: str) -> dict[str, list[LineRange]]:
@@ -134,14 +123,14 @@ def _calculate_coverage(sf, changed_files, repo_root) -> CoverageReport:
         report.coverage = 1.0
         return report
 
-    # Build mapped ranges from specmap mappings.
+    # Build mapped ranges from annotations (only those with refs = spec-covered).
     mapped_ranges: dict[str, list[LineRange]] = {}
     if sf is not None:
-        for m in sf.mappings:
-            ct = m.code_target
-            mapped_ranges.setdefault(ct.file, []).append(
-                LineRange(start=ct.start_line, end=ct.end_line)
-            )
+        for ann in sf.annotations:
+            if ann.refs:  # Only count annotations with spec references as covered
+                mapped_ranges.setdefault(ann.file, []).append(
+                    LineRange(start=ann.start_line, end=ann.end_line)
+                )
 
     total_changed = 0
     total_mapped = 0
@@ -177,17 +166,6 @@ def _calculate_coverage(sf, changed_files, repo_root) -> CoverageReport:
     if total_changed > 0:
         report.coverage = total_mapped / total_changed
 
-    # Find stale mappings.
-    if sf is not None:
-        for m in sf.mappings:
-            if m.stale:
-                report.stale.append(StaleMapping(
-                    file=m.code_target.file,
-                    start_line=m.code_target.start_line,
-                    end_line=m.code_target.end_line,
-                    reason="marked stale",
-                ))
-
     return report
 
 
@@ -219,8 +197,6 @@ def check(
 
     # Get changed files.
     changed_files = _changed_files(repo_root, base_branch)
-    if not changed_files and not json_output:
-        pass  # git diff may have failed — we proceed with empty
 
     report = _calculate_coverage(sf, changed_files, repo_root)
     passed = report.coverage >= threshold
@@ -245,15 +221,6 @@ def check(
                 }
                 for u in report.unmapped
             ],
-            "stale": [
-                {
-                    "file": s.file,
-                    "start_line": s.start_line,
-                    "end_line": s.end_line,
-                    "reason": s.reason,
-                }
-                for s in report.stale
-            ],
         }
         sys.stdout.write(json.dumps(out, indent=2) + "\n")
         if not passed:
@@ -274,13 +241,6 @@ def check(
             for u in sorted_unmapped
         ]
         console.print(f"Unmapped: {', '.join(parts)}")
-
-    if report.stale:
-        parts = [
-            f"{s.file}:{s.start_line}-{s.end_line} ({s.reason})"
-            for s in report.stale
-        ]
-        console.print(f"Stale: {', '.join(parts)}")
 
     coverage_pct = report.coverage * 100
     threshold_pct = threshold * 100

@@ -1,6 +1,6 @@
 """Pydantic models for Specmap tracking files.
 
-Matches the .specmap/{branch}.json format.
+Matches the .specmap/{branch}.json format (v2: annotation-based).
 """
 
 from __future__ import annotations
@@ -11,64 +11,41 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 
-def _generate_mapping_id() -> str:
-    """Generate a mapping ID like m_{uuid4_hex[:12]}."""
-    return f"m_{uuid.uuid4().hex[:12]}"
+def _generate_annotation_id() -> str:
+    """Generate an annotation ID like a_{uuid4_hex[:12]}."""
+    return f"a_{uuid.uuid4().hex[:12]}"
 
 
-class SpecSpan(BaseModel):
-    """A span of text within a spec document that a code change implements."""
+class SpecRef(BaseModel):
+    """An inline citation to a spec document within an annotation."""
 
-    spec_file: str
-    heading_path: list[str]
-    span_offset: int
-    span_length: int
-    span_hash: str
-    relevance: float = Field(default=1.0, ge=0.0, le=1.0)
-
-
-class CodeTarget(BaseModel):
-    """A region of code that implements spec text."""
-
-    file: str
-    start_line: int
-    end_line: int
-    content_hash: str
+    id: int  # Reference number within the annotation (1, 2, ...)
+    spec_file: str  # "docs/auth-spec.md"
+    heading: str  # "Token Storage" or "Authentication > Encryption"
+    start_line: int  # Line number in spec file where excerpt begins
+    excerpt: str  # Short excerpt of the referenced spec text (1-3 sentences)
 
 
-class Mapping(BaseModel):
-    """A mapping between spec text and code."""
+class Annotation(BaseModel):
+    """A description of a code change region with inline spec references."""
 
-    id: str = Field(default_factory=_generate_mapping_id)
-    spec_spans: list[SpecSpan] = Field(default_factory=list)
-    code_target: CodeTarget
-    stale: bool = False
+    id: str = Field(default_factory=_generate_annotation_id)
+    file: str  # "src/auth/session.go"
+    start_line: int  # 1-indexed
+    end_line: int  # 1-indexed, inclusive
+    description: str  # "Implements session store... [1][2]"
+    refs: list[SpecRef] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class SpecSection(BaseModel):
-    """A section within a spec document, identified by its heading path."""
-
-    heading_path: list[str]
-    heading_line: int
-    section_hash: str
-
-
-class SpecDocument(BaseModel):
-    """A parsed spec document with its sections."""
-
-    doc_hash: str
-    sections: dict[str, SpecSection] = Field(default_factory=dict)
-
-
 class SpecmapFile(BaseModel):
-    """The top-level .specmap/{branch}.json file."""
+    """The top-level .specmap/{branch}.json file (v2)."""
 
-    version: int = 1
+    version: int = 2
     branch: str = ""
     base_branch: str = "main"
+    head_sha: str = ""  # Enables diff-based skip on next push
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_by: str = "mcp:claude-code"
-    spec_documents: dict[str, SpecDocument] = Field(default_factory=dict)
-    mappings: list[Mapping] = Field(default_factory=list)
+    annotations: list[Annotation] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(default_factory=list)

@@ -36,8 +36,8 @@ def test_load_nonexistent(tmp_repo: Path):
     mgr = SpecmapFileManager(str(tmp_repo))
     data = mgr.load("nonexistent-branch")
     assert data.branch == "nonexistent-branch"
-    assert data.mappings == []
-    assert data.spec_documents == {}
+    assert data.annotations == []
+    assert data.head_sha == ""
 
 
 def test_save_and_load(tmp_repo: Path):
@@ -53,7 +53,7 @@ def test_save_and_load(tmp_repo: Path):
     loaded = mgr.load("test-branch")
     assert loaded.branch == "test-branch"
     assert loaded.base_branch == "main"
-    assert loaded.version == 1
+    assert loaded.version == 2
 
 
 def test_save_branch_sanitization(tmp_repo: Path):
@@ -93,14 +93,14 @@ def test_save_creates_pretty_json(tmp_repo: Path):
 
 
 def test_save_with_sample_data(tmp_repo: Path, sample_specmap: SpecmapFile):
-    """Save and load a SpecmapFile with mappings and spec documents."""
+    """Save and load a SpecmapFile with annotations."""
     mgr = SpecmapFileManager(str(tmp_repo))
 
     path = mgr.save(sample_specmap)
     assert path.exists()
 
     loaded = mgr.load(sample_specmap.branch)
-    assert len(loaded.mappings) == 1
-    assert len(loaded.spec_documents) == 1
-    assert loaded.mappings[0].id == "m_abcdef123456"
-    assert loaded.mappings[0].code_target.file == "api/internal/auth/session.go"
+    assert len(loaded.annotations) == 1
+    assert loaded.annotations[0].id == "a_abcdef123456"
+    assert loaded.annotations[0].file == "api/internal/auth/session.go"
+    assert len(loaded.annotations[0].refs) == 2

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from specmap.config import SpecmapConfig
 from specmap.indexer.code_analyzer import CodeAnalyzer
 from specmap.state.specmap_file import SpecmapFileManager
 
@@ -15,6 +14,8 @@ async def get_unmapped_changes(
 ) -> dict:
     """Find code changes without spec coverage.
 
+    Coverage = lines in annotations with non-empty refs / total changed lines.
+
     Args:
         repo_root: Path to the repository root
         branch: Branch name (None = auto-detect)
@@ -24,7 +25,6 @@ async def get_unmapped_changes(
     Returns:
         Unmapped ranges, per-file and overall coverage percentages
     """
-    config = SpecmapConfig.load(repo_root)
     file_mgr = SpecmapFileManager(repo_root)
     analyzer = CodeAnalyzer()
 
@@ -55,14 +55,13 @@ async def get_unmapped_changes(
         for line_no in range(change.start_line, change.end_line + 1):
             lines.add(line_no)
 
-    # Build a set of all mapped lines per file
-    mapped_lines_per_file: dict[str, set[int]] = {}
-    for mapping in specmap.mappings:
-        if mapping.stale:
-            continue
-        target = mapping.code_target
-        lines = mapped_lines_per_file.setdefault(target.file, set())
-        for line_no in range(target.start_line, target.end_line + 1):
+    # Build a set of all covered lines per file (annotations with refs = spec-covered)
+    covered_lines_per_file: dict[str, set[int]] = {}
+    for ann in specmap.annotations:
+        if not ann.refs:
+            continue  # Described but not spec-covered
+        lines = covered_lines_per_file.setdefault(ann.file, set())
+        for line_no in range(ann.start_line, ann.end_line + 1):
             lines.add(line_no)
 
     # Calculate coverage per file
@@ -71,9 +70,8 @@ async def get_unmapped_changes(
     total_mapped = 0
 
     for file_path, changed in changed_lines_per_file.items():
-        mapped = mapped_lines_per_file.get(file_path, set())
-        covered = changed & mapped
-        uncovered = changed - mapped
+        covered = changed & covered_lines_per_file.get(file_path, set())
+        uncovered = changed - covered_lines_per_file.get(file_path, set())
 
         file_changed = len(changed)
         file_covered = len(covered)

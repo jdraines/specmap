@@ -1,35 +1,30 @@
-"""Prompt templates for LLM-driven mapping and re-indexing."""
+"""Prompt templates for LLM-driven annotation generation."""
 
 from __future__ import annotations
 
-from specmap.state.models import Mapping
 
+_ANNOTATION_SYSTEM = """\
+You are an annotation engine that describes code changes and links them to spec documents.
 
-_MAPPING_SYSTEM = """\
-You are a mapping engine that identifies which spec text describes the intent behind code changes.
+Given code changes and spec document sections, describe what each changed region does in \
+natural language. Reference the spec where applicable using [N] notation, where N is a \
+sequential number starting from 1.
 
-Given code changes and spec document sections, identify the specific spans of spec text that \
-describe WHY the code exists or what requirement it implements.
+For each annotation, provide:
+- file: the code file path
+- start_line: first line of the annotated region (1-based)
+- end_line: last line of the annotated region (1-based, inclusive)
+- description: natural language description with [N] spec references inline
+- refs: list of spec references, each with ref_number matching [N] in description, \
+spec_file, heading (section title or path like "Auth > Encryption"), \
+start_line (line number in spec where excerpt begins), and excerpt (1-3 sentences)
+- reasoning: brief explanation of your annotation choices (not stored)
 
-For each mapping, provide:
-- spec_file: the spec document file path
-- heading_path: the hierarchy of headings leading to the relevant section
-- span_offset: character offset of the relevant text within the full spec document
-- span_length: length of the relevant text span
-- relevance: 0.0 to 1.0 indicating how directly the spec text describes this code
-- reasoning: brief explanation of why this mapping exists
+Choose appropriate granularity — group related lines under one description, or give \
+individual lines their own annotation when they implement distinct requirements. \
+Prefer concise, informative descriptions over verbose ones.
 
-Output valid JSON matching the MappingResponse schema. Only include mappings where \
-you are confident the spec text describes the intent behind the code. \
-Prefer precise, narrow spans over broad ones."""
-
-_REINDEX_SYSTEM = """\
-You are a mapping engine that re-locates spec text that has moved or changed.
-
-Given a code region and updated spec content, determine if the spec still describes \
-the intent behind the code. If so, provide the updated span location.
-
-Output valid JSON matching the ReindexResult schema."""
+Output valid JSON matching the AnnotationResponse schema."""
 
 _SUPPLEMENT_SYSTEM = """\
 You are a spec writer that generates concise spec text for code that lacks specification coverage.
@@ -38,17 +33,16 @@ Given code content and its file path, write spec text that captures the intent a
 that the code implements. Write in the style of a technical specification, not code documentation."""
 
 
-def build_mapping_prompt(
+def build_annotation_prompt(
     code_changes: list[dict],
-    spec_sections: dict[str, dict],
+    spec_sections: dict[str, list[dict]],
 ) -> list[dict]:
-    """Build system + user messages for mapping code to spec.
+    """Build system + user messages for annotating code changes.
 
     Args:
         code_changes: list of dicts with file_path, start_line, end_line, content
-        spec_sections: dict of spec_file -> {section_key -> {heading_path, content, offset}}
+        spec_sections: dict of spec_file -> list of {heading, start_line, content}
     """
-    # Build the user message with code and spec context
     code_parts = []
     for change in code_changes:
         code_parts.append(
@@ -60,55 +54,22 @@ def build_mapping_prompt(
     spec_parts = []
     for spec_file, sections in spec_sections.items():
         spec_parts.append(f"## Spec: {spec_file}")
-        for section_key, section_info in sections.items():
+        for section in sections:
             spec_parts.append(
-                f"### {section_key} (offset: {section_info['offset']}, "
-                f"length: {len(section_info['content'])})\n"
-                f"{section_info['content']}"
+                f"### {section['heading']} (line {section['start_line']})\n"
+                f"{section['content']}"
             )
     spec_block = "\n\n".join(spec_parts)
 
     user_message = (
         f"# Code Changes\n\n{code_block}\n\n"
         f"# Spec Documents\n\n{spec_block}\n\n"
-        "Identify which spec spans describe the intent behind these code changes. "
-        "Return a JSON object with a 'mappings' array."
+        "Describe what each code region does and reference spec sections using [N] notation. "
+        "Return a JSON object with an 'annotations' array."
     )
 
     return [
-        {"role": "system", "content": _MAPPING_SYSTEM},
-        {"role": "user", "content": user_message},
-    ]
-
-
-def build_reindex_prompt(
-    stale_mapping: Mapping,
-    code_content: str,
-    spec_content: str,
-) -> list[dict]:
-    """Build prompt for remapping a stale mapping."""
-    spans_desc = []
-    for span in stale_mapping.spec_spans:
-        spans_desc.append(
-            f"- Spec file: {span.spec_file}, "
-            f"Heading: {' > '.join(span.heading_path)}, "
-            f"Previous offset: {span.span_offset}, length: {span.span_length}"
-        )
-    spans_block = "\n".join(spans_desc)
-
-    user_message = (
-        f"# Code Region\n"
-        f"File: {stale_mapping.code_target.file} "
-        f"(lines {stale_mapping.code_target.start_line}-{stale_mapping.code_target.end_line})\n"
-        f"```\n{code_content}\n```\n\n"
-        f"# Previous Spec Spans\n{spans_block}\n\n"
-        f"# Updated Spec Content\n{spec_content}\n\n"
-        "Does the spec still describe the intent behind this code? "
-        "If so, provide the updated span location. Return a JSON object matching ReindexResult."
-    )
-
-    return [
-        {"role": "system", "content": _REINDEX_SYSTEM},
+        {"role": "system", "content": _ANNOTATION_SYSTEM},
         {"role": "user", "content": user_message},
     ]
 

@@ -1,12 +1,12 @@
 # CLI Overview
 
-The Specmap CLI is a Python tool (built with Typer) that validates spec-to-code mappings and enforces coverage thresholds. It reads `.specmap/{branch}.json` files and git diffs — it never makes LLM calls or network requests.
+The Specmap CLI is a Python tool (built with Typer) that validates annotations and enforces coverage thresholds. It reads `.specmap/{branch}.json` files and git diffs -- it never makes LLM calls or network requests.
 
 ## What It Does
 
-- **`validate`** — checks hash integrity of all mappings
-- **`status`** — shows a human-readable summary of specs, mappings, and staleness
-- **`check`** — computes coverage against a base branch and enforces a threshold
+- **`validate`** -- checks that annotated line ranges are valid in current code files
+- **`status`** -- shows a human-readable summary of annotations with descriptions and file summaries
+- **`check`** -- computes coverage against a base branch and enforces a threshold
 
 ## Global Flags
 

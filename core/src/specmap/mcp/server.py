@@ -10,10 +10,9 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 from specmap.config import _detect_repo_root
+from specmap.tools.annotate import annotate
 from specmap.tools.check_sync import check_sync
 from specmap.tools.get_unmapped import get_unmapped_changes
-from specmap.tools.map_code_to_spec import map_code_to_spec
-from specmap.tools.reindex import reindex
 
 
 def create_server() -> Server:
@@ -24,11 +23,14 @@ def create_server() -> Server:
     async def list_tools() -> list[Tool]:
         return [
             Tool(
-                name="specmap_map",
+                name="specmap_annotate",
                 description=(
-                    "Map code changes to spec documents. Analyzes git diff against the base "
-                    "branch and uses LLM to identify which spec text describes the intent "
-                    "behind each code change. Creates .specmap/{branch}.json tracking file."
+                    "Generate annotations for code changes with spec references. "
+                    "Analyzes git diff against the base branch and uses LLM to "
+                    "describe what each code region does with inline [N] references "
+                    "to spec documents. Creates .specmap/{branch}.json tracking file. "
+                    "On subsequent runs, uses diff-based optimization to skip "
+                    "unchanged files and shift line numbers mechanically."
                 ),
                 inputSchema={
                     "type": "object",
@@ -67,9 +69,8 @@ def create_server() -> Server:
             Tool(
                 name="specmap_check",
                 description=(
-                    "Verify existing specmap mappings are still valid. Re-computes hashes "
-                    "for spec spans and code targets, attempts relocation for mismatches, "
-                    "and marks stale mappings."
+                    "Verify existing annotations are still valid. Checks that "
+                    "annotated line ranges still exist in the code files."
                 ),
                 inputSchema={
                     "type": "object",
@@ -85,7 +86,7 @@ def create_server() -> Server:
                         "files": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Specific files to check mappings for.",
+                            "description": "Specific files to check annotations for.",
                         },
                     },
                     "required": [],
@@ -95,7 +96,8 @@ def create_server() -> Server:
                 name="specmap_unmapped",
                 description=(
                     "Find code changes without spec coverage. Returns unmapped line ranges "
-                    "and per-file/overall coverage percentages."
+                    "and per-file/overall coverage percentages. Coverage is calculated as "
+                    "lines in annotations with spec refs / total changed lines."
                 ),
                 inputSchema={
                     "type": "object",
@@ -126,39 +128,6 @@ def create_server() -> Server:
                     "required": [],
                 },
             ),
-            Tool(
-                name="specmap_reindex",
-                description=(
-                    "Selective re-indexing of specmap data. Compares document and section "
-                    "hashes to detect changes, relocates spans where possible, and uses "
-                    "LLM to re-map stale mappings. Proportional to change size."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "repo_root": {
-                            "type": "string",
-                            "description": "Path to the repository root.",
-                        },
-                        "spec_files": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Specific spec files to re-index.",
-                        },
-                        "code_files": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Specific code files to re-index mappings for.",
-                        },
-                        "force": {
-                            "type": "boolean",
-                            "description": "Force re-index everything regardless of hashes.",
-                            "default": False,
-                        },
-                    },
-                    "required": [],
-                },
-            ),
         ]
 
     @server.call_tool()
@@ -174,8 +143,8 @@ def create_server() -> Server:
             )]
 
         try:
-            if name == "specmap_map":
-                result = await map_code_to_spec(
+            if name == "specmap_annotate":
+                result = await annotate(
                     repo_root=repo_root,
                     code_changes=arguments.get("code_changes"),
                     spec_files=arguments.get("spec_files"),
@@ -193,13 +162,6 @@ def create_server() -> Server:
                     branch=arguments.get("branch"),
                     base_branch=arguments.get("base_branch"),
                     threshold=arguments.get("threshold"),
-                )
-            elif name == "specmap_reindex":
-                result = await reindex(
-                    repo_root=repo_root,
-                    spec_files=arguments.get("spec_files"),
-                    code_files=arguments.get("code_files"),
-                    force=arguments.get("force", False),
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}

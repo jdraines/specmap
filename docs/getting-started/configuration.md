@@ -15,8 +15,8 @@ Specmap loads configuration from two sources. Environment variables take precede
 | Environment Variable | Config Key | Default | Description |
 |---|---|---|---|
 | `SPECMAP_MODEL` | `model` | `gpt-4o-mini` | LLM model identifier (any litellm-supported model) |
-| `SPECMAP_API_KEY` | `api_key` | — | API key for LLM provider (required) |
-| `SPECMAP_API_BASE` | `api_base` | — | Custom API base URL (for proxies, local models) |
+| `SPECMAP_API_KEY` | `api_key` | -- | API key for LLM provider (required) |
+| `SPECMAP_API_BASE` | `api_base` | -- | Custom API base URL (for proxies, local models) |
 | `SPECMAP_SPEC_PATTERNS` | `spec_patterns` | `**/*.md` | Comma-separated glob patterns for spec files |
 | `SPECMAP_IGNORE_PATTERNS` | `ignore_patterns` | `*.generated.go,*.lock,vendor/**` | Comma-separated patterns for files to ignore |
 

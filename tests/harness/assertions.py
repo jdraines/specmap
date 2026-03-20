@@ -7,12 +7,12 @@ from harness.cli import CLIResult
 
 # --- Python tool result assertions ---
 
-def assert_map_ok(result: dict) -> None:
+def assert_annotate_ok(result: dict) -> None:
     assert result["status"] == "ok", f"Expected status 'ok', got {result['status']!r}"
-    assert result["mappings_created"] > 0, "Expected at least one mapping created"
+    assert result["annotations_created"] > 0, "Expected at least one annotation created"
 
 
-def assert_map_no_changes(result: dict) -> None:
+def assert_annotate_no_changes(result: dict) -> None:
     assert result["status"] in ("no_changes", "no_specs"), f"Unexpected status: {result['status']}"
 
 
@@ -21,16 +21,6 @@ def assert_coverage(result: dict, expected: float, tolerance: float = 0.01) -> N
     assert abs(actual - expected) <= tolerance, (
         f"Coverage {actual:.3f} not within {tolerance} of expected {expected:.3f}"
     )
-
-
-def assert_no_stale(result: dict) -> None:
-    stale = result.get("stale", 0)
-    assert stale == 0, f"Expected no stale mappings, got {stale}"
-
-
-def assert_stale_count(result: dict, n: int) -> None:
-    stale = result.get("stale", 0)
-    assert stale == n, f"Expected {n} stale mappings, got {stale}"
 
 
 # --- CLI result assertions ---
@@ -50,8 +40,8 @@ def assert_fail(cli_result: CLIResult) -> None:
 
 def assert_all_valid(cli_result: CLIResult) -> None:
     assert_pass(cli_result)
-    assert "hash mismatch" not in cli_result.stdout, (
-        f"Found hash mismatch in validate output:\n{cli_result.stdout}"
+    assert "invalid" not in cli_result.stdout.lower() or "0 invalid" in cli_result.stdout.lower(), (
+        f"Found invalid annotations in validate output:\n{cli_result.stdout}"
     )
 
 

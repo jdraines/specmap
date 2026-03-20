@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 
 import pytest
 
-from harness.spec_content import AUTH_SPEC, AUTH_SPEC_REWRITTEN
+from harness.spec_content import AUTH_SPEC
 from harness.code_content import AUTH_GO
-from harness.llm_mock import build_mapping_for_spec, build_reindex_result, LLMMockRegistry
+from harness.llm_mock import build_annotation_for_spec, LLMMockRegistry
 from harness.assertions import (
-    assert_map_ok,
+    assert_annotate_ok,
     assert_pass,
     assert_fail,
     assert_all_valid,
@@ -20,38 +19,40 @@ from harness.assertions import (
 from harness.repo import GitRepo
 from harness.cli import CLIRunner
 
-from specmap.tools.map_code_to_spec import map_code_to_spec
+from specmap.tools.annotate import annotate
 from specmap.tools.check_sync import check_sync
-from specmap.tools.reindex import reindex
 from specmap.tools.get_unmapped import get_unmapped_changes
 from specmap.indexer.hasher import hash_content, hash_code, hash_code_lines
-from specmap.llm.schemas import MappingResponse
+from specmap.llm.schemas import AnnotationResponse
 
 from conftest import setup_spec_on_main
 
 
-# ── H29: Full lifecycle — map -> check -> unmapped -> edit spec -> reindex ──
+# ── H29: Full lifecycle — annotate -> check -> unmapped ──────────────────────
 
 async def test_full_lifecycle(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/auth-spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/auth-spec.md", AUTH_SPEC)
 
     repo.write_file("src/auth.go", AUTH_GO)
     repo.git_add("src/auth.go")
     repo.git_commit("Add auth code")
 
-    # Step 1: Map
-    mapping = build_mapping_for_spec(
+    # Step 1: Annotate
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/auth-spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
-    map_result = await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+    annotate_result = await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
-    assert_map_ok(map_result)
+    assert_annotate_ok(annotate_result)
 
     # Step 2: Check (CLI)
     chk = cli_runner.check(repo, "feature/test", base="main")
@@ -61,64 +62,47 @@ async def test_full_lifecycle(
     unmapped = await get_unmapped_changes(str(repo.path), branch="feature/test")
     assert unmapped["overall_coverage"] == 1.0
 
-    # Step 4: Edit spec (rewrite Token Storage)
-    repo.write_file("docs/auth-spec.md", AUTH_SPEC_REWRITTEN)
-
-    # Step 5: check_sync detects hash mismatch — but due to a design limitation
-    # in check_sync (old_contents == new_contents), relocator always "succeeds".
-    # Verify the hash mismatch is at least detected (needs_relocation path).
+    # Step 4: check_sync verifies line ranges
     sync = await check_sync(str(repo.path), branch="feature/test")
-    assert sync["relocated"] > 0 or sync["valid"] > 0, (
-        f"Expected relocated or valid after spec edit, got: {sync}"
-    )
+    assert sync["valid"] >= 1
+    assert sync["invalid"] == 0
 
-    # Step 6: Reindex properly detects the doc-level hash change and re-maps
-    reindex_resp = build_reindex_result(
-        AUTH_SPEC_REWRITTEN, "Token Storage", "docs/auth-spec.md",
-        ["Authentication", "Token Storage"],
-    )
-    llm_mock._responses.clear()
-    llm_mock.on_reindex(reindex_resp)
-
-    ri = await reindex(str(repo.path))
-    # Reindex sees doc hash changed → affected mappings → relocates or remaps
-    assert ri["total_mappings"] >= 1
-
-    # Step 7: Validate — final state should be valid
+    # Step 5: Validate — final state should be valid
     val = cli_runner.validate(repo, "feature/test")
     assert_all_valid(val)
 
 
-# ── H30: Python writes, Go reads ────────────────────────────────────────────
+# ── H30: Python writes, CLI reads ───────────────────────────────────────────
 
-async def test_python_writes_go_reads(
+async def test_python_writes_cli_reads(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
-    """Python map_code_to_spec writes .specmap JSON, Go CLI validates and checks."""
+    """Python annotate writes .specmap JSON, CLI validates and checks."""
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/auth-spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/auth-spec.md", AUTH_SPEC)
 
-    # Code file intentionally has no trailing newline so Python and Go
-    # produce identical code-target hashes.
     repo.write_file("src/auth.go", AUTH_GO)
     repo.git_add("src/auth.go")
     repo.git_commit("Add auth code")
 
-    mapping = build_mapping_for_spec(
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/auth-spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
-    result = await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+    result = await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
-    assert_map_ok(result)
+    assert_annotate_ok(result)
 
-    # Go validate: reads Python-written JSON, verifies all hashes
+    # CLI validate: reads Python-written JSON, verifies line ranges
     val = cli_runner.validate(repo, "feature/test")
     assert_all_valid(val)
 
-    # Go check: reads Python-written JSON, computes coverage
+    # CLI check: reads Python-written JSON, computes coverage
     chk = cli_runner.check(repo, "feature/test", base="main")
     assert_check_json_pass(chk)
     assert chk.json_data["coverage"] == 1.0
@@ -130,18 +114,21 @@ async def test_cli_json_schema(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/spec.md", AUTH_SPEC)
 
     repo.write_file("src/auth.go", AUTH_GO)
     repo.git_add("src/auth.go")
     repo.git_commit("Add code")
 
-    mapping = build_mapping_for_spec(
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
-    await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+    await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
 
@@ -153,7 +140,7 @@ async def test_cli_json_schema(
     expected_keys = {
         "branch", "base_branch", "total_files", "mapped_files",
         "total_lines", "mapped_lines", "coverage", "threshold",
-        "pass", "unmapped", "stale",
+        "pass", "unmapped",
     }
     missing = expected_keys - set(data.keys())
     assert not missing, f"Missing keys in check JSON: {missing}"
@@ -162,7 +149,6 @@ async def test_cli_json_schema(
     assert isinstance(data["coverage"], (int, float))
     assert isinstance(data["pass"], bool)
     assert isinstance(data["unmapped"], list)
-    assert isinstance(data["stale"], list)
 
 
 # ── H32: Code hash compatibility between Python and Go ──────────────────────
@@ -173,9 +159,6 @@ def test_code_hash_compatibility(scenario_repo: GitRepo, cli_runner: CLIRunner):
     Both sides normalize code content before hashing:
       - Python: hash_code / hash_code_lines strip trailing newlines
       - Go: strings.Split + strings.Join naturally drops trailing newlines
-
-    This ensures ``specmap validate`` (Go) agrees with the hashes that
-    ``map_code_to_spec`` (Python) writes.
     """
     repo = scenario_repo
 

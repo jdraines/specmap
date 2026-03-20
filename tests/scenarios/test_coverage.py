@@ -1,4 +1,4 @@
-"""E. Coverage edge cases — threshold enforcement, ignore patterns, stale."""
+"""E. Coverage edge cases — threshold enforcement, ignore patterns."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import pytest
 
 from harness.spec_content import AUTH_SPEC, API_SPEC
 from harness.code_content import AUTH_GO, API_GO
-from harness.llm_mock import build_mapping_for_spec, LLMMockRegistry
+from harness.llm_mock import build_annotation_for_spec, LLMMockRegistry
 from harness.assertions import (
-    assert_map_ok,
+    assert_annotate_ok,
     assert_check_json_pass,
     assert_check_json_fail,
     assert_coverage,
@@ -19,82 +19,72 @@ from harness.assertions import (
 from harness.repo import GitRepo
 from harness.cli import CLIRunner
 
-from specmap.tools.map_code_to_spec import map_code_to_spec
+from specmap.tools.annotate import annotate
 from specmap.tools.get_unmapped import get_unmapped_changes
-from specmap.indexer.hasher import hash_content, hash_document, hash_span, hash_code
-from specmap.llm.schemas import MappingResponse
+from specmap.llm.schemas import AnnotationResponse
 
 from conftest import setup_spec_on_main
 
 
 def _build_specmap_data(
     branch: str,
-    spec_file: str,
-    spec_content: str,
-    mappings_data: list[dict],
+    annotations_data: list[dict],
 ) -> dict:
-    """Build a raw specmap dict with exact control over content."""
+    """Build a raw specmap v2 dict with exact control over content."""
     return {
-        "version": 1,
+        "version": 2,
         "branch": branch,
         "base_branch": "main",
+        "head_sha": "",
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": "test",
-        "spec_documents": {
-            spec_file: {
-                "doc_hash": hash_document(spec_content),
-                "sections": {},
-            }
-        },
-        "mappings": mappings_data,
+        "annotations": annotations_data,
         "ignore_patterns": [],
     }
 
 
-def _make_mapping(
+def _make_annotation(
     code_file: str,
     code_content: str,
     spec_file: str,
     spec_content: str,
     heading_text: str,
-    heading_path: list[str],
-    stale: bool = False,
+    heading_path: str,
+    no_refs: bool = False,
 ) -> dict:
-    """Build a single mapping dict with correct hashes."""
-    from harness.llm_mock import _find_heading, _line_offset
+    """Build a single annotation dict."""
+    from harness.llm_mock import _find_heading
 
     line_idx, level, lines = _find_heading(spec_content, heading_text)
-    offset = _line_offset(lines, line_idx)
-    section_end = len(spec_content)
+
+    # Extract excerpt
+    body_lines = []
     for i in range(line_idx + 1, len(lines)):
         stripped = lines[i].strip()
         if stripped.startswith("#"):
-            h_level = len(stripped) - len(stripped.lstrip("#"))
-            if h_level <= level:
-                section_end = _line_offset(lines, i)
-                break
-    span_length = section_end - offset
+            break
+        if stripped:
+            body_lines.append(stripped)
+    excerpt = " ".join(body_lines[:2])
 
     code_lines = code_content.splitlines()
+    refs = [] if no_refs else [
+        {
+            "id": 1,
+            "spec_file": spec_file,
+            "heading": heading_path,
+            "start_line": line_idx + 1,
+            "excerpt": excerpt,
+        }
+    ]
+
     return {
-        "id": f"m_test_{code_file.replace('/', '_')}",
-        "spec_spans": [
-            {
-                "spec_file": spec_file,
-                "heading_path": heading_path,
-                "span_offset": offset,
-                "span_length": span_length,
-                "span_hash": hash_span(spec_content, offset, span_length),
-                "relevance": 0.95,
-            }
-        ],
-        "code_target": {
-            "file": code_file,
-            "start_line": 1,
-            "end_line": len(code_lines),
-            "content_hash": hash_code(code_content),
-        },
-        "stale": stale,
+        "id": f"a_test_{code_file.replace('/', '_')}",
+        "file": code_file,
+        "start_line": 1,
+        "end_line": len(code_lines),
+        "description": f"Implements {heading_text.lower()} functionality. [1]",
+        "refs": refs,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -105,21 +95,24 @@ async def test_100_percent(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/spec.md", AUTH_SPEC)
 
     repo.write_file("src/auth.go", AUTH_GO)
     repo.git_add("src/auth.go")
     repo.git_commit("Add code")
 
-    mapping = build_mapping_for_spec(
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
-    result = await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+    result = await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
-    assert_map_ok(result)
+    assert_annotate_ok(result)
 
     chk = cli_runner.check(repo, "feature/test", base="main", threshold=1.0)
     assert_check_json_pass(chk)
@@ -133,7 +126,7 @@ async def test_0_percent(
 ):
     repo = scenario_repo
 
-    # Add code with no mapping
+    # Add code with no annotations
     repo.write_file("src/auth.go", AUTH_GO)
     repo.git_add("src/auth.go")
     repo.git_commit("Add unmapped code")
@@ -149,28 +142,26 @@ async def test_threshold_exactly_met(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/spec.md", AUTH_SPEC)
 
-    # 4-line file, mapped
+    # 4-line file, annotated
     four_lines = "package main\nfunc a() {}\nfunc b() {}\nfunc c() {}"
     repo.write_file("src/main.go", four_lines)
-    # 1-line file, not mapped
+    # 1-line file, not annotated
     repo.write_file("src/util.go", "package util")
     repo.git_add("src/main.go", "src/util.go")
     repo.git_commit("Add code files")
 
     # Write specmap directly for exact control
-    mapping_data = _make_mapping(
+    annotation_data = _make_annotation(
         "src/main.go", four_lines,
         "docs/spec.md", AUTH_SPEC,
-        "Token Storage", ["Authentication", "Token Storage"],
+        "Token Storage", "Authentication > Token Storage",
     )
-    specmap = _build_specmap_data(
-        "feature/test", "docs/spec.md", AUTH_SPEC, [mapping_data],
-    )
+    specmap = _build_specmap_data("feature/test", [annotation_data])
     repo.write_specmap("feature/test", specmap)
 
-    # Total: 5 lines (4 mapped + 1 unmapped), coverage = 0.80
+    # Total: 5 lines (4 annotated + 1 unannotated), coverage = 0.80
     chk = cli_runner.check(repo, "feature/test", base="main", threshold=0.80)
     assert_check_json_pass(chk)
     assert abs(chk.json_data["coverage"] - 0.8) < 0.01
@@ -186,25 +177,23 @@ async def test_threshold_just_below(
     # Put spec on main
     setup_spec_on_main(repo, "docs/spec.md", AUTH_SPEC)
 
-    # 3-line file, mapped
+    # 3-line file, annotated
     three_lines = "package main\nfunc a() {}\nfunc b() {}"
     repo.write_file("src/main.go", three_lines)
-    # 2-line file, not mapped
+    # 2-line file, not annotated
     repo.write_file("src/util.go", "package util\nfunc noop() {}")
     repo.git_add("src/main.go", "src/util.go")
     repo.git_commit("Add code")
 
-    mapping_data = _make_mapping(
+    annotation_data = _make_annotation(
         "src/main.go", three_lines,
         "docs/spec.md", AUTH_SPEC,
-        "Token Storage", ["Authentication", "Token Storage"],
+        "Token Storage", "Authentication > Token Storage",
     )
-    specmap = _build_specmap_data(
-        "feature/test", "docs/spec.md", AUTH_SPEC, [mapping_data],
-    )
+    specmap = _build_specmap_data("feature/test", [annotation_data])
     repo.write_specmap("feature/test", specmap)
 
-    # Total: 5 lines (3 mapped + 2 unmapped), coverage = 0.60
+    # Total: 5 lines (3 annotated + 2 unannotated), coverage = 0.60
     chk = cli_runner.check(repo, "feature/test", base="main", threshold=0.80)
     assert_check_json_fail(chk)
     assert chk.json_data["coverage"] < 0.80
@@ -216,47 +205,43 @@ async def test_ignore_patterns(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/spec.md", AUTH_SPEC)
 
-    # Mapped code file
+    # Annotated code file
     repo.write_file("src/auth.go", AUTH_GO)
     # Generated file — should be excluded
     repo.write_file("src/schema.generated.go", "package gen\nfunc Generated() {}")
     repo.git_add("src/auth.go", "src/schema.generated.go")
     repo.git_commit("Add code + generated file")
 
-    mapping = build_mapping_for_spec(
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
-    result = await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+    result = await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
-    assert_map_ok(result)
+    assert_annotate_ok(result)
 
     # Write specmap with ignore patterns
     sm = repo.read_specmap("feature/test")
     sm["ignore_patterns"] = ["*.generated.go"]
     repo.write_specmap("feature/test", sm)
 
-    # Python get_unmapped should not count generated file
-    # (get_unmapped uses git diff which includes the generated file,
-    #  but ignore_patterns in specmap should filter it)
-    # The generated file IS in git diff but not in mappings.
-    # Note: the Go CLI doesn't apply ignore_patterns from the specmap file
-    # to the coverage calculation — it counts ALL changed files from git diff.
-    # This test verifies the Python tool behavior.
+    # auth.go should be fully covered
     unmapped = await get_unmapped_changes(str(repo.path), branch="feature/test")
-    # auth.go is mapped, so its coverage should be high
     if "src/auth.go" in unmapped.get("files", {}):
         auth_cov = unmapped["files"]["src/auth.go"]["coverage"]
         assert auth_cov == 1.0
 
 
-# ── E20: Stale mappings not counted in Python coverage ──────────────────────
+# ── E20: Annotations without refs not counted as spec-covered ────────────────
 
-async def test_stale_not_counted(
+async def test_no_refs_not_counted(
     scenario_repo: GitRepo, cli_runner: CLIRunner
 ):
     repo = scenario_repo
@@ -267,19 +252,16 @@ async def test_stale_not_counted(
     repo.git_add("src/main.go")
     repo.git_commit("Add code")
 
-    # Create mapping marked as stale
-    mapping_data = _make_mapping(
+    # Create annotation with no refs (described but not spec-covered)
+    annotation_data = _make_annotation(
         "src/main.go", code,
         "docs/spec.md", AUTH_SPEC,
-        "Token Storage", ["Authentication", "Token Storage"],
-        stale=True,
+        "Token Storage", "Authentication > Token Storage",
+        no_refs=True,
     )
-    specmap = _build_specmap_data(
-        "feature/test", "docs/spec.md", AUTH_SPEC, [mapping_data],
-    )
+    specmap = _build_specmap_data("feature/test", [annotation_data])
     repo.write_specmap("feature/test", specmap)
 
-    # Python get_unmapped skips stale mappings (line 61-62 of get_unmapped.py)
+    # Annotations without refs shouldn't contribute to coverage → coverage = 0
     unmapped = await get_unmapped_changes(str(repo.path), branch="feature/test")
-    # Stale mapping shouldn't contribute to coverage → coverage = 0
     assert_coverage(unmapped, 0.0)

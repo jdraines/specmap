@@ -9,12 +9,9 @@ from pathlib import Path
 import pytest
 
 from specmap.state.models import (
-    CodeTarget,
-    Mapping,
-    SpecDocument,
+    Annotation,
     SpecmapFile,
-    SpecSection,
-    SpecSpan,
+    SpecRef,
 )
 
 
@@ -163,50 +160,43 @@ def tmp_repo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def sample_specmap() -> SpecmapFile:
-    """Return a SpecmapFile with sample data."""
+    """Return a SpecmapFile with sample annotation data."""
     return SpecmapFile(
-        version=1,
+        version=2,
         branch="feature/add-auth",
         base_branch="main",
+        head_sha="abc123def456",
         updated_at=datetime(2026, 3, 19, 14, 30, 0, tzinfo=timezone.utc),
         updated_by="mcp:claude-code",
-        spec_documents={
-            "docs/auth-spec.md": SpecDocument(
-                doc_hash="sha256:a1b2c3d4e5f60000",
-                sections={
-                    "Authentication > Token Storage": SpecSection(
-                        heading_path=["Authentication", "Token Storage"],
-                        heading_line=5,
-                        section_hash="sha256:789abc0000000000",
-                    ),
-                    "Authentication > Token Storage > Encryption": SpecSection(
-                        heading_path=["Authentication", "Token Storage", "Encryption"],
-                        heading_line=10,
-                        section_hash="sha256:def0120000000000",
-                    ),
-                },
-            ),
-        },
-        mappings=[
-            Mapping(
-                id="m_abcdef123456",
-                spec_spans=[
-                    SpecSpan(
+        annotations=[
+            Annotation(
+                id="a_abcdef123456",
+                file="api/internal/auth/session.go",
+                start_line=15,
+                end_line=42,
+                description=(
+                    "Implements session store with 24h TTL and AES-256 "
+                    "encryption at rest. [1][2]"
+                ),
+                refs=[
+                    SpecRef(
+                        id=1,
                         spec_file="docs/auth-spec.md",
-                        heading_path=["Authentication", "Token Storage"],
-                        span_offset=120,
-                        span_length=100,
-                        span_hash="sha256:def0120000000000",
-                        relevance=1.0,
+                        heading="Token Storage",
+                        start_line=6,
+                        excerpt=(
+                            "Tokens are stored securely in the session store. "
+                            "Each token has a TTL of 24 hours."
+                        ),
+                    ),
+                    SpecRef(
+                        id=2,
+                        spec_file="docs/auth-spec.md",
+                        heading="Encryption",
+                        start_line=12,
+                        excerpt="All tokens are encrypted at rest using AES-256-GCM.",
                     ),
                 ],
-                code_target=CodeTarget(
-                    file="api/internal/auth/session.go",
-                    start_line=15,
-                    end_line=42,
-                    content_hash="sha256:9ab0cd0000000000",
-                ),
-                stale=False,
                 created_at=datetime(2026, 3, 19, 14, 25, 0, tzinfo=timezone.utc),
             ),
         ],
