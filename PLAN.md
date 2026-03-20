@@ -25,24 +25,32 @@ This is a greenfield project targeting startup viability. Phase 1 (MCP server + 
                          │   OAuth)  │
                          └───────────┘
 
-┌─────────────────────────────────────────────┐
-│   Local Developer Machine                    │
-│                                              │
-│   ┌──────────┐    MCP     ┌──────────────┐  │
-│   │ Coding   │◄──────────►│ Python MCP   │  │
-│   │ Agent    │  (stdio)   │ Server       │  │
-│   └──────────┘            │  ┌─────────┐ │  │
-│                           │  │ litellm │ │  │
-│                           │  │ (BYOK)  │ │  │
-│                           │  └────┬────┘ │  │
-│                           └───────┼──────┘  │
-│                                   │         │
-│                           ┌───────▼──────┐  │
-│                           │ .specmap/    │  │
-│                           │ branch.json  │  │
-│                           └──────────────┘  │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│   Local Developer Machine                             │
+│                                                       │
+│   ┌──────────┐    MCP     ┌───────────────────────┐  │
+│   │ Coding   │◄──────────►│ specmap.mcp (server)  │  │
+│   │ Agent    │  (stdio)   │   ┌─────────┐         │  │
+│   └──────────┘            │   │ litellm │         │  │
+│                           │   │ (BYOK)  │         │  │
+│                           │   └────┬────┘         │  │
+│   ┌──────────┐            │        │              │  │
+│   │ CI / Dev │◄───────────┤ specmap (core lib)    │  │
+│   │ Terminal │  (CLI)     │   indexer, state, llm, │  │
+│   └──────────┘            │   tools, config        │  │
+│                           └───────┬───────────────┘  │
+│   ┌──────────┐                    │                  │
+│   │ specmap  │  Typer CLI         │                  │
+│   │ check/   │◄───────────────────┘                  │
+│   │ validate │                                       │
+│   └──────────┘            ┌───────────────┐          │
+│                           │ .specmap/     │          │
+│                           │ branch.json   │          │
+│                           └───────────────┘          │
+└──────────────────────────────────────────────────────┘
 ```
+
+Both `specmap.mcp` (MCP server) and `specmap.cli` (Typer CLI) are thin entrypoints over the shared `specmap` core library in `core/src/specmap/`.
 
 ---
 
@@ -55,47 +63,41 @@ specmap/
 ├── justfile                          # Task runner
 ├── docker-compose.yml                # Local dev (Postgres, etc.)
 │
-├── mcp/                              # Python MCP server + LLM orchestration
-│   ├── pyproject.toml                # uv; deps: mcp, litellm, pydantic, mistune, unidiff
-│   ├── src/specmap_mcp/
-│   │   ├── __main__.py               # Entry: starts MCP server on stdio
-│   │   ├── server.py                 # Tool registration
+├── core/                             # Python: core library, MCP server, CLI
+│   ├── pyproject.toml                # uv; deps: mcp, litellm, pydantic, mistune, unidiff, typer
+│   ├── src/specmap/                  # Shared core library
 │   │   ├── config.py                 # BYOK config loading (env vars, .specmap/config.json)
+│   │   ├── indexer/
+│   │   │   ├── spec_parser.py        # Markdown → heading hierarchy + hashes
+│   │   │   ├── code_analyzer.py      # Diff parsing, change grouping
+│   │   │   ├── mapper.py             # LLM-driven semantic mapping (core IP)
+│   │   │   ├── hasher.py             # Hierarchical hashing functions
+│   │   │   └── validator.py          # Hash validation (doc, code, span)
+│   │   ├── state/
+│   │   │   ├── models.py             # Pydantic models for .specmap/ format
+│   │   │   ├── specmap_file.py       # Read/write .specmap/{branch}.json
+│   │   │   └── relocator.py          # Stale span relocation (fuzzy match)
+│   │   ├── llm/
+│   │   │   ├── client.py             # litellm wrapper, retry, token counting
+│   │   │   ├── prompts.py            # Mapping/reindex prompt templates
+│   │   │   └── schemas.py            # Structured output schemas
 │   │   ├── tools/
 │   │   │   ├── map_code_to_spec.py   # Core mapping tool
 │   │   │   ├── check_sync.py         # Verify mappings current
 │   │   │   ├── get_unmapped.py       # Find uncovered code
 │   │   │   └── reindex.py            # Selective re-indexing
-│   │   ├── indexer/
-│   │   │   ├── spec_parser.py        # Markdown → heading hierarchy + hashes
-│   │   │   ├── code_analyzer.py      # Diff parsing, change grouping
-│   │   │   ├── mapper.py             # LLM-driven semantic mapping (core IP)
-│   │   │   └── hasher.py             # Hierarchical hashing functions
-│   │   ├── state/
-│   │   │   ├── models.py             # Pydantic models for .specmap/ format
-│   │   │   ├── specmap_file.py       # Read/write .specmap/{branch}.json
-│   │   │   └── relocator.py          # Stale span relocation (fuzzy match)
-│   │   └── llm/
-│   │       ├── client.py             # litellm wrapper, retry, token counting
-│   │       ├── prompts.py            # Mapping/reindex prompt templates
-│   │       └── schemas.py            # Structured output schemas
-│   └── tests/
-│
-├── cli/                              # Go CLI for validation + CI
-│   ├── go.mod
-│   ├── main.go
-│   ├── cmd/
-│   │   ├── root.go                   # Global flags (--repo-root, --branch, --no-color)
-│   │   ├── validate.go               # Schema + hash integrity check
-│   │   ├── status.go                 # Human-readable mapping summary
-│   │   └── check.go                  # CI mode: --threshold, --base, --json
-│   └── internal/
-│       ├── specmap/
-│       │   ├── reader.go             # Parse .specmap/ JSON
-│       │   ├── validator.go          # Hash verification
-│       │   └── coverage.go           # Coverage calculation
-│       └── git/
-│           └── diff.go               # git diff integration
+│   │   ├── mcp/                      # MCP server entrypoint
+│   │   │   ├── __main__.py           # python -m specmap.mcp
+│   │   │   └── server.py             # Tool registration
+│   │   └── cli/                      # Typer CLI entrypoint
+│   │       ├── __init__.py           # Typer app, global callback
+│   │       ├── __main__.py           # python -m specmap.cli
+│   │       ├── output.py             # Rich console helpers
+│   │       └── commands/
+│   │           ├── validate.py       # Schema + hash integrity check
+│   │           ├── status.py         # Human-readable mapping summary
+│   │           └── check.py          # CI mode: --threshold, --base, --json
+│   └── tests/                        # Unit tests (pytest)
 │
 ├── api/                              # Go API server (Phase 2+)
 │   ├── go.mod
@@ -138,11 +140,16 @@ specmap/
 │       ├── dev/
 │       └── prod/
 │
-└── docs/
-    ├── architecture.md
-    ├── api.md
-    ├── mcp-tools.md
-    └── specmap-format.md
+├── tests/                            # Functional test suite
+│   ├── conftest.py                   # Session fixtures
+│   ├── harness/                      # Test infrastructure (repo, CLI runner, mocks)
+│   └── scenarios/                    # End-to-end test scenarios
+│
+└── docs/                             # MkDocs documentation
+    ├── getting-started/
+    ├── cli/
+    ├── mcp/
+    └── concepts/
 ```
 
 ---
@@ -324,7 +331,7 @@ Overall: 82.2% (threshold: 80.0%) — PASS
 | Go DB driver | `jackc/pgx/v5` | High-performance Postgres, native types, pooling |
 | Go migrations | `golang-migrate/migrate` + embedded SQL | Simple, file-based |
 | Go GitHub client | `google/go-github/v60` | Well-maintained, typed |
-| Go CLI | `spf13/cobra` | Standard, subcommand support |
+| Python CLI | `typer` (Typer >= 0.12, bundles Rich) | Click-based, auto-generates help, Rich output |
 | Python MCP | `modelcontextprotocol/python-sdk` | Official SDK |
 | Python LLM | `litellm` | BYOK across 100+ providers |
 | Python markdown | `mistune` | AST-based parsing for section extraction |
@@ -370,22 +377,25 @@ Overall: 82.2% (threshold: 80.0%) — PASS
 
 ## Phased Delivery
 
-### Phase 1: MCP Server + CLI (standalone, no infrastructure)
-Build the Python MCP server with all 4 tools and the Go CLI with validate/status/check commands. A developer adds the MCP server to their coding agent, mappings are generated during development, `.specmap/` files are committed, and coverage is checked in CI.
+### Phase 1: MCP Server + CLI (standalone, no infrastructure) — COMPLETE
+All Python. The `core/` directory contains the shared `specmap` package, the MCP server (`specmap.mcp`), and the Typer CLI (`specmap.cli`). Both entrypoints import from the same core library (`specmap.indexer`, `specmap.state`, `specmap.tools`, etc.).
 
-**Key files to implement first:**
-1. `mcp/src/specmap_mcp/state/models.py` — data contract shared across all components
-2. `mcp/src/specmap_mcp/indexer/hasher.py` — hierarchical hashing foundation
-3. `mcp/src/specmap_mcp/indexer/spec_parser.py` — markdown → section hierarchy
-4. `mcp/src/specmap_mcp/indexer/code_analyzer.py` — diff parsing + change grouping
-5. `mcp/src/specmap_mcp/indexer/mapper.py` — LLM-driven mapping (core IP)
-6. `mcp/src/specmap_mcp/state/specmap_file.py` — read/write `.specmap/{branch}.json`
-7. `mcp/src/specmap_mcp/state/relocator.py` — stale span relocation
-8. `mcp/src/specmap_mcp/llm/client.py` — litellm wrapper
-9. `mcp/src/specmap_mcp/llm/prompts.py` — mapping prompt templates
-10. `mcp/src/specmap_mcp/tools/*.py` — all 4 tool implementations
-11. `mcp/src/specmap_mcp/server.py` — MCP server registration
-12. `cli/` — Go CLI (reader, validator, coverage, commands)
+A developer adds the MCP server to their coding agent, mappings are generated during development, `.specmap/` files are committed, and coverage is checked in CI via `specmap check`.
+
+**Implemented files (core library):**
+1. `core/src/specmap/state/models.py` — Pydantic data models (SpecmapFile, Mapping, CodeTarget, etc.)
+2. `core/src/specmap/indexer/hasher.py` — hierarchical hashing (document, section, span, code)
+3. `core/src/specmap/indexer/spec_parser.py` — markdown → section hierarchy
+4. `core/src/specmap/indexer/code_analyzer.py` — diff parsing + change grouping
+5. `core/src/specmap/indexer/mapper.py` — LLM-driven semantic mapping (core IP)
+6. `core/src/specmap/indexer/validator.py` — hash validation (doc, code, span)
+7. `core/src/specmap/state/specmap_file.py` — read/write `.specmap/{branch}.json`
+8. `core/src/specmap/state/relocator.py` — stale span relocation
+9. `core/src/specmap/llm/client.py` — litellm wrapper
+10. `core/src/specmap/llm/prompts.py` — mapping prompt templates
+11. `core/src/specmap/tools/*.py` — all 4 MCP tool implementations
+12. `core/src/specmap/mcp/server.py` — MCP server registration
+13. `core/src/specmap/cli/` — Typer CLI (validate, status, check commands)
 
 ### Phase 2: Web UI (read-only) + GitHub OAuth
 Go API server, React diff viewer with spec panel, GitHub OAuth login. Reviewers can see diffs with spec annotations and coverage.
@@ -400,15 +410,15 @@ LLM-generated specs for unmapped code, GitHub Action for CI coverage gates, adva
 
 ## Verification
 
-### Phase 1 testing:
-- **Python unit tests**: spec parser, hasher, code analyzer, relocator, models (no LLM needed)
-- **Python integration tests**: full tool flows against temp git repos; LLM calls mocked via `unittest.mock.patch` on `litellm.acompletion` (or recorded cassettes via vcrpy)
-- **Go unit tests**: reader, validator, coverage with known fixtures
-- **Go integration tests**: CLI invoked against temp git repos with sample `.specmap/` files
+### Phase 1 testing (COMPLETE — 94 tests, all passing):
+- **Python unit tests (62)**: spec parser, hasher, code analyzer, relocator, models, validator (`just mcp-test`)
+- **Functional tests (32)**: end-to-end scenarios against temp git repos with deterministic LLM mocks — exercises MCP tools, CLI commands, hash compatibility, staleness detection, coverage enforcement (`just functional-test`)
+- **Test harness**: 5-layer architecture — conftest fixtures, GitRepo helper, LLMMockRegistry, CLIRunner (subprocess), domain assertions, reusable spec/code constants
+- **CI commands**: `just test` (unit), `just test-all` (unit + functional), `just lint` (ruff)
 - **Manual E2E**: Configure MCP server in Claude Code, run a coding session, verify `.specmap/` file is created correctly, run `specmap check`
 
 ### Phase 2+ testing:
 - Go API: handler tests with `httptest`, store tests with `testcontainers-go` (Postgres)
 - React: component tests with Vitest + Testing Library
 - E2E: Playwright for login → view PR → post comment flow (Phase 3)
-- CI pipeline: `uv run pytest --cov`, `go test ./...`, `go vet`, linters
+- CI pipeline: `uv run pytest --cov`, linters

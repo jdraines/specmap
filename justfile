@@ -36,6 +36,32 @@ mcp-fmt:
 cli-run *ARGS:
     cd core && uv run python -m specmap.cli {{ARGS}}
 
+# --- Go API Server ---
+
+# Build API binary
+api-build:
+    cd api && go build -o specmap-api ./cmd/api
+
+# Run API server
+api-run:
+    cd api && go run ./cmd/api
+
+# Run Go tests
+api-test *ARGS:
+    cd api && go test ./... {{ARGS}}
+
+# Vet Go code
+api-vet:
+    cd api && go vet ./...
+
+# Start local dev services (Postgres)
+dev-up:
+    docker compose up -d
+
+# Stop local dev services
+dev-down:
+    docker compose down
+
 # --- Documentation ---
 
 # Install docs dependencies
@@ -71,10 +97,10 @@ functional-test-fast *ARGS:
 # --- Combined ---
 
 # Run all unit tests
-test: mcp-test
+test: mcp-test api-test
 
 # Run all tests including functional
-test-all: mcp-test functional-test
+test-all: mcp-test api-test functional-test
 
 # Run all lints
-lint: mcp-lint
+lint: mcp-lint api-vet
