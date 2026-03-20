@@ -6,7 +6,8 @@ dist/
 .venv/
 .eggs/
 
-# Go (removed — CLI is now Python)
+# Go
+api/specmap-api
 
 # IDE
 .idea/
