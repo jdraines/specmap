@@ -135,6 +135,50 @@ def classify_annotations(
     return ClassifiedAnnotations(keep=keep, shift=shift, regenerate=regenerate)
 
 
+def reclassify_for_spec_changes(
+    classified: ClassifiedAnnotations,
+    changed_spec_files: set[str],
+) -> ClassifiedAnnotations:
+    """Move annotations citing changed spec files into the regenerate bucket.
+
+    If a spec document changed between pushes, annotations that reference it
+    may have stale excerpts or line numbers. These need LLM regeneration even
+    if the code file itself didn't change.
+    """
+    if not changed_spec_files:
+        return classified
+
+    new_keep: list[Annotation] = []
+    new_shift: list[Annotation] = []
+    extra_regenerate: list[Annotation] = []
+
+    for ann in classified.keep:
+        if _cites_any_spec(ann, changed_spec_files):
+            extra_regenerate.append(ann)
+        else:
+            new_keep.append(ann)
+
+    for ann in classified.shift:
+        if _cites_any_spec(ann, changed_spec_files):
+            extra_regenerate.append(ann)
+        else:
+            new_shift.append(ann)
+
+    return ClassifiedAnnotations(
+        keep=new_keep,
+        shift=new_shift,
+        regenerate=classified.regenerate + extra_regenerate,
+    )
+
+
+def _cites_any_spec(ann: Annotation, spec_files: set[str]) -> bool:
+    """Check if an annotation has any ref pointing to one of the given spec files."""
+    for ref in ann.refs:
+        if ref.spec_file in spec_files:
+            return True
+    return False
+
+
 def shift_annotations(
     annotations: list[Annotation],
     file_hunks: dict[str, FileHunks],

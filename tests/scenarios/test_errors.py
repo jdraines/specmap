@@ -12,7 +12,6 @@ from harness.repo import GitRepo
 from harness.cli import CLIRunner
 
 from specmap.tools.annotate import annotate
-from specmap.tools.get_unmapped import get_unmapped_changes
 from specmap.llm.schemas import AnnotationResponse
 
 from conftest import setup_spec_on_main
@@ -26,10 +25,6 @@ async def test_empty_repo(scenario_repo: GitRepo, llm_mock: LLMMockRegistry):
     result = await annotate(str(repo.path), branch="feature/test")
     assert result["status"] == "no_specs"
     assert result["annotations_created"] == 0
-
-    # get_unmapped with nothing should report 100% (nothing to cover)
-    unmapped = await get_unmapped_changes(str(repo.path), branch="feature/test")
-    assert unmapped["overall_coverage"] == 1.0
 
 
 # ── G25: Spec with no headings ──────────────────────────────────────────────

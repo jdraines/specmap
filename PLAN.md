@@ -83,8 +83,7 @@ specmap/
 │   │   │   └── schemas.py            # Structured output schemas (AnnotationResponse)
 │   │   ├── tools/
 │   │   │   ├── annotate.py           # Core annotation tool
-│   │   │   ├── check_sync.py         # Verify annotations are valid
-│   │   │   └── get_unmapped.py       # Find uncovered code
+│   │   │   └── check_sync.py         # Verify annotations are valid
 │   │   ├── mcp/                      # MCP server entrypoint
 │   │   │   ├── __main__.py           # python -m specmap.mcp
 │   │   │   └── server.py             # Tool registration
@@ -94,8 +93,7 @@ specmap/
 │   │       ├── output.py             # Rich console helpers
 │   │       └── commands/
 │   │           ├── validate.py       # Line range validity check
-│   │           ├── status.py         # Human-readable annotation summary
-│   │           └── check.py          # CI mode: --threshold, --base, --json
+│   │           └── status.py         # Human-readable annotation summary
 │   └── tests/                        # Unit tests (pytest)
 │
 ├── api/                              # Go API server (Phase 2+)
@@ -224,9 +222,9 @@ All tools auto-detect branch from git and auto-discover spec files by scanning f
 
 ### `specmap_annotate`
 Core annotation tool. Called by agent after code changes.
-- Input: optional `code_changes[]` (file paths/diffs), optional `spec_files[]`, optional `branch`
+- Input: optional `code_changes[]` (file paths/diffs), optional `spec_files[]`, optional `branch`, optional `context` (freeform development session context)
 - Process: compute diff -> read specs -> LLM generates natural-language descriptions with [N] spec citations -> write `.specmap/{branch}.json`
-- Output: annotations created/updated count, coverage delta
+- Output: annotations created/updated count
 
 ### `specmap_check`
 Verify existing annotations are still valid.
@@ -234,36 +232,7 @@ Verify existing annotations are still valid.
 - Process: check that annotated line ranges still exist in the code files (no hash checks)
 - Output: valid/invalid annotation counts with details
 
-### `specmap_unmapped`
-Find code without spec coverage.
-- Input: optional `branch`, optional `base_branch`, optional `threshold`
-- Output: unmapped file/line ranges, overall + per-file coverage percentages
-- Coverage = lines in annotations with non-empty refs / total changed lines
-
 ---
-
-## Spec Coverage (First-Class Concept)
-
-**Metric:** covered changed lines / total changed lines (against base branch)
-
-**Coverage categories:**
-- **Covered** -- lines within annotations that have non-empty `refs` (linked to spec)
-- **Described** -- lines within annotations that have empty `refs` (described but not spec-linked)
-- **Unmapped** -- changed lines with no annotation at all
-
-**Surfaces in:**
-- MCP server: `specmap_unmapped` reports coverage
-- CLI: `specmap check --threshold 0.80` for CI enforcement (exit 1 if below)
-- UI: CoverageBar component per-file and per-PR
-- GitHub Action (Phase 4): quality gate with configurable threshold
-
-**CLI output example:**
-```
-specmap: checking coverage for feature/add-auth (base: main)
-Files: 10/12 covered | Lines: 245/298 covered
-Unmapped: auth/middleware.go (0%, 38 lines), hooks/useAuth.ts (0%, 15 lines)
-Overall: 82.2% (threshold: 80.0%) -- PASS
-```
 
 ---
 
@@ -361,7 +330,7 @@ Overall: 82.2% (threshold: 80.0%) -- PASS
 ### Phase 1: MCP Server + CLI (standalone, no infrastructure) -- COMPLETE
 All Python. The `core/` directory contains the shared `specmap` package, the MCP server (`specmap.mcp`), and the Typer CLI (`specmap.cli`). Both entrypoints import from the same core library (`specmap.indexer`, `specmap.state`, `specmap.tools`, etc.).
 
-A developer adds the MCP server to their coding agent, annotations are generated during development, `.specmap/` files are committed, and coverage is checked in CI via `specmap check`.
+A developer adds the MCP server to their coding agent, annotations are generated during development, `.specmap/` files are committed, and structural validity is checked in CI via `specmap validate`.
 
 **Implemented files (core library):**
 1. `core/src/specmap/state/models.py` -- Pydantic data models (SpecmapFile v2, Annotation, SpecRef)
@@ -375,9 +344,9 @@ A developer adds the MCP server to their coding agent, annotations are generated
 9. `core/src/specmap/llm/client.py` -- litellm wrapper
 10. `core/src/specmap/llm/prompts.py` -- annotation prompt templates
 11. `core/src/specmap/llm/schemas.py` -- structured output schemas (AnnotationResponse)
-12. `core/src/specmap/tools/*.py` -- all 3 MCP tool implementations (annotate, check_sync, get_unmapped)
-13. `core/src/specmap/mcp/server.py` -- MCP server registration (3 tools)
-14. `core/src/specmap/cli/` -- Typer CLI (validate, status, check commands)
+12. `core/src/specmap/tools/*.py` -- MCP tool implementations (annotate, check_sync)
+13. `core/src/specmap/mcp/server.py` -- MCP server registration (2 tools)
+14. `core/src/specmap/cli/` -- Typer CLI (validate, status commands)
 
 ### Phase 2: Web UI (read-only) + GitHub OAuth
 Go API server, React diff viewer with spec panel, GitHub OAuth login. Reviewers can see diffs with spec annotations and coverage.
@@ -394,10 +363,10 @@ LLM-generated specs for unmapped code, GitHub Action for CI coverage gates, adva
 
 ### Phase 1 testing (COMPLETE):
 - **Python unit tests**: annotation engine, diff optimizer, models, state file I/O, code analyzer (`just mcp-test`)
-- **Functional tests**: end-to-end scenarios against temp git repos with deterministic LLM mocks -- exercises MCP tools, CLI commands, annotation generation, coverage enforcement (`just functional-test`)
+- **Functional tests**: end-to-end scenarios against temp git repos with deterministic LLM mocks -- exercises MCP tools, CLI commands, annotation generation (`just functional-test`)
 - **Test harness**: multi-layer architecture -- conftest fixtures, GitRepo helper, LLMMockRegistry, CLIRunner (subprocess), domain assertions, reusable spec/code constants
 - **CI commands**: `just test` (unit), `just test-all` (unit + functional), `just lint` (ruff)
-- **Manual E2E**: Configure MCP server in Claude Code, run a coding session, verify `.specmap/` file is created correctly, run `specmap check`
+- **Manual E2E**: Configure MCP server in Claude Code, run a coding session, verify `.specmap/` file is created correctly, run `specmap validate`
 
 ### Phase 2+ testing:
 - Go API: handler tests with `httptest`, store tests with `testcontainers-go` (Postgres)

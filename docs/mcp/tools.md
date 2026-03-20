@@ -1,6 +1,6 @@
 # Tools Reference
 
-The MCP server exposes three tools. All parameters are optional -- the server auto-detects sensible defaults from the git repo.
+The MCP server exposes two tools. All parameters are optional -- the server auto-detects sensible defaults from the git repo.
 
 ## specmap_annotate
 
@@ -16,6 +16,7 @@ Generates annotations for code changes using an LLM. Each annotation is a natura
 | `code_changes` | `string[]` | Auto-detect from `git diff` | File paths to analyze |
 | `spec_files` | `string[]` | Auto-discover from glob patterns | Spec files to reference |
 | `branch` | `string` | Current git branch | Branch name for the specmap file |
+| `context` | `string` | -- | Optional freeform context from the development session (e.g. design decisions, constraints) that the LLM uses to write better descriptions |
 
 ### Output
 
@@ -72,50 +73,5 @@ Verifies that existing annotations are still valid by checking that their line r
       "reason": "file has only 30 lines"
     }
   ]
-}
-```
-
----
-
-## specmap_unmapped
-
-Reports coverage per file -- which changed lines have annotations with spec references and which don't.
-
-**When to use:** To find gaps in spec coverage before opening a PR.
-
-### Parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `repo_root` | `string` | Auto-detect | Path to repository root |
-| `branch` | `string` | Current branch | Branch name |
-| `base_branch` | `string` | From specmap file | Base branch for diff |
-| `threshold` | `number` | -- | Only report files below this coverage (0.0-1.0) |
-
-### Output
-
-```json
-{
-  "status": "ok",
-  "overall_coverage": 0.82,
-  "total_changed_lines": 298,
-  "covered_lines": 245,
-  "uncovered_lines": 53,
-  "files": {
-    "auth/middleware.go": {
-      "changed_lines": 38,
-      "covered_lines": 0,
-      "uncovered_lines": 38,
-      "coverage": 0.0,
-      "uncovered_ranges": [{"start": 1, "end": 38}]
-    },
-    "auth/session.go": {
-      "changed_lines": 65,
-      "covered_lines": 65,
-      "uncovered_lines": 0,
-      "coverage": 1.0,
-      "uncovered_ranges": []
-    }
-  }
 }
 ```

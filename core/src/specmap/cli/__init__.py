@@ -58,4 +58,4 @@ def main(
 
 
 # Register subcommands by importing the command modules.
-from specmap.cli.commands import validate, status, check  # noqa: E402, F401
+from specmap.cli.commands import validate, status  # noqa: E402, F401

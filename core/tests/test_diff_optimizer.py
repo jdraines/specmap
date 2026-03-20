@@ -5,13 +5,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from specmap.indexer.diff_optimizer import (
+    ClassifiedAnnotations,
     FileHunks,
     Hunk,
     classify_annotations,
     parse_incremental_diff,
+    reclassify_for_spec_changes,
     shift_annotations,
 )
-from specmap.state.models import Annotation
+from specmap.state.models import Annotation, SpecRef
 
 
 def _ann(file: str, start: int, end: int, ann_id: str = "a_test") -> Annotation:
@@ -22,6 +24,29 @@ def _ann(file: str, start: int, end: int, ann_id: str = "a_test") -> Annotation:
         start_line=start,
         end_line=end,
         description="test",
+        created_at=datetime(2026, 3, 19, tzinfo=timezone.utc),
+    )
+
+
+def _ann_with_ref(
+    file: str, start: int, end: int, spec_file: str, ann_id: str = "a_test"
+) -> Annotation:
+    """Create an annotation with a spec ref for testing."""
+    return Annotation(
+        id=ann_id,
+        file=file,
+        start_line=start,
+        end_line=end,
+        description="Implements feature. [1]",
+        refs=[
+            SpecRef(
+                id=1,
+                spec_file=spec_file,
+                heading="Some Heading",
+                start_line=5,
+                excerpt="Some spec text.",
+            ),
+        ],
         created_at=datetime(2026, 3, 19, tzinfo=timezone.utc),
     )
 
@@ -178,3 +203,66 @@ class TestShiftAnnotations:
         }
         shifted = shift_annotations(anns, file_hunks)
         assert shifted[0].start_line >= 1
+
+
+class TestReclassifyForSpecChanges:
+    def test_no_changed_specs_noop(self):
+        """Empty changed_spec_files returns classification unchanged."""
+        ann = _ann_with_ref("src/main.go", 1, 10, "docs/spec.md", "a_1")
+        classified = ClassifiedAnnotations(keep=[ann], shift=[], regenerate=[])
+        result = reclassify_for_spec_changes(classified, set())
+        assert len(result.keep) == 1
+        assert len(result.regenerate) == 0
+
+    def test_keep_moved_to_regenerate(self):
+        """Annotation in keep citing a changed spec moves to regenerate."""
+        ann = _ann_with_ref("src/main.go", 1, 10, "docs/spec.md", "a_1")
+        classified = ClassifiedAnnotations(keep=[ann], shift=[], regenerate=[])
+        result = reclassify_for_spec_changes(classified, {"docs/spec.md"})
+        assert len(result.keep) == 0
+        assert len(result.regenerate) == 1
+        assert result.regenerate[0].id == "a_1"
+
+    def test_shift_moved_to_regenerate(self):
+        """Annotation in shift citing a changed spec moves to regenerate."""
+        ann = _ann_with_ref("src/main.go", 20, 30, "docs/spec.md", "a_2")
+        classified = ClassifiedAnnotations(keep=[], shift=[ann], regenerate=[])
+        result = reclassify_for_spec_changes(classified, {"docs/spec.md"})
+        assert len(result.shift) == 0
+        assert len(result.regenerate) == 1
+
+    def test_unrelated_spec_not_affected(self):
+        """Annotation citing an unchanged spec stays in keep."""
+        ann = _ann_with_ref("src/main.go", 1, 10, "docs/auth.md", "a_3")
+        classified = ClassifiedAnnotations(keep=[ann], shift=[], regenerate=[])
+        result = reclassify_for_spec_changes(classified, {"docs/api.md"})
+        assert len(result.keep) == 1
+        assert len(result.regenerate) == 0
+
+    def test_annotation_without_refs_not_affected(self):
+        """Annotation with no refs is never moved (nothing to invalidate)."""
+        ann = _ann("src/main.go", 1, 10, "a_4")  # no refs
+        classified = ClassifiedAnnotations(keep=[ann], shift=[], regenerate=[])
+        result = reclassify_for_spec_changes(classified, {"docs/spec.md"})
+        assert len(result.keep) == 1
+        assert len(result.regenerate) == 0
+
+    def test_mixed_keep_and_shift(self):
+        """Both keep and shift annotations citing changed spec are moved."""
+        keep_ann = _ann_with_ref("src/a.go", 1, 5, "docs/spec.md", "a_k")
+        shift_ann = _ann_with_ref("src/b.go", 20, 30, "docs/spec.md", "a_s")
+        unrelated = _ann_with_ref("src/c.go", 1, 5, "docs/other.md", "a_u")
+        already_regen = _ann_with_ref("src/d.go", 1, 5, "docs/spec.md", "a_r")
+
+        classified = ClassifiedAnnotations(
+            keep=[keep_ann, unrelated],
+            shift=[shift_ann],
+            regenerate=[already_regen],
+        )
+        result = reclassify_for_spec_changes(classified, {"docs/spec.md"})
+        assert len(result.keep) == 1
+        assert result.keep[0].id == "a_u"
+        assert len(result.shift) == 0
+        assert len(result.regenerate) == 3  # already_regen + keep_ann + shift_ann
+        regen_ids = {a.id for a in result.regenerate}
+        assert regen_ids == {"a_r", "a_k", "a_s"}

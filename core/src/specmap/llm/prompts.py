@@ -10,6 +10,10 @@ Given code changes and spec document sections, describe what each changed region
 natural language. Reference the spec where applicable using [N] notation, where N is a \
 sequential number starting from 1.
 
+Additional context from the development session may be provided. Use it to write more \
+accurate and informative descriptions — for example, if the developer mentions a specific \
+algorithm choice or configuration decision, reflect that in the annotation.
+
 For each annotation, provide:
 - file: the code file path
 - start_line: first line of the annotated region (1-based)
@@ -36,12 +40,14 @@ that the code implements. Write in the style of a technical specification, not c
 def build_annotation_prompt(
     code_changes: list[dict],
     spec_sections: dict[str, list[dict]],
+    context: str | None = None,
 ) -> list[dict]:
     """Build system + user messages for annotating code changes.
 
     Args:
         code_changes: list of dicts with file_path, start_line, end_line, content
         spec_sections: dict of spec_file -> list of {heading, start_line, content}
+        context: optional freeform context from the development session
     """
     code_parts = []
     for change in code_changes:
@@ -64,6 +70,12 @@ def build_annotation_prompt(
     user_message = (
         f"# Code Changes\n\n{code_block}\n\n"
         f"# Spec Documents\n\n{spec_block}\n\n"
+    )
+
+    if context:
+        user_message += f"# Additional Context\n\n{context}\n\n"
+
+    user_message += (
         "Describe what each code region does and reference spec sections using [N] notation. "
         "Return a JSON object with an 'annotations' array."
     )

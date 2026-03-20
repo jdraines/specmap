@@ -52,20 +52,3 @@ class CLIRunner:
 
     def status(self, repo: GitRepo, branch: str) -> CLIResult:
         return self._run(repo, ["--branch", branch], ["status"])
-
-    def check(
-        self,
-        repo: GitRepo,
-        branch: str,
-        base: str = "main",
-        threshold: float = 0.0,
-        json_output: bool = True,
-    ) -> CLIResult:
-        cmd_args = [
-            "check",
-            "--base", base,
-            "--threshold", str(threshold),
-        ]
-        if json_output:
-            cmd_args.append("--json")
-        return self._run(repo, ["--branch", branch], cmd_args)

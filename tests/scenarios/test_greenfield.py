@@ -1,4 +1,4 @@
-"""A. Greenfield scenarios — new repo: spec -> code -> annotate -> validate -> check."""
+"""A. Greenfield scenarios — new repo: spec -> code -> annotate -> validate."""
 
 from __future__ import annotations
 
@@ -11,8 +11,6 @@ from harness.assertions import (
     assert_annotate_ok,
     assert_pass,
     assert_all_valid,
-    assert_check_json_pass,
-    assert_check_json_fail,
 )
 from harness.repo import GitRepo
 from harness.cli import CLIRunner
@@ -59,16 +57,11 @@ async def test_full_coverage_roundtrip(
     val = cli_runner.validate(repo, "feature/test")
     assert_all_valid(val)
 
-    # CLI check — 100% coverage (all changed lines annotated with refs)
-    chk = cli_runner.check(repo, "feature/test", base="main", threshold=0.0)
-    assert_check_json_pass(chk)
-    assert chk.json_data["coverage"] == 1.0
-
 
 # ── A2: Partial coverage with threshold ──────────────────────────────────────
 
 async def test_partial_coverage_threshold(
-    scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
+    scenario_repo: GitRepo, llm_mock: LLMMockRegistry
 ):
     repo = scenario_repo
     setup_spec_on_main(repo, "docs/auth-spec.md", AUTH_SPEC)
@@ -94,18 +87,11 @@ async def test_partial_coverage_threshold(
     )
     assert_annotate_ok(result)
 
-    # Coverage < 1.0 (api.go lines are unannotated)
-    chk = cli_runner.check(repo, "feature/test", base="main", threshold=0.0)
-    assert_check_json_pass(chk)
-    assert chk.json_data["coverage"] < 1.0
-
-    # Low threshold passes
-    chk_low = cli_runner.check(repo, "feature/test", base="main", threshold=0.3)
-    assert_check_json_pass(chk_low)
-
-    # Threshold 1.0 fails
-    chk_high = cli_runner.check(repo, "feature/test", base="main", threshold=1.0)
-    assert_check_json_fail(chk_high)
+    # Annotations exist but only for auth.go — api.go is unannotated
+    specmap = repo.read_specmap("feature/test")
+    annotated_files = {a["file"] for a in specmap["annotations"]}
+    assert "src/auth.go" in annotated_files
+    assert "src/api.go" not in annotated_files
 
 
 # ── A3: Multi spec, multi code ───────────────────────────────────────────────
@@ -165,3 +151,45 @@ async def test_multi_spec_multi_code(
     # CLI validate passes for both
     val = cli_runner.validate(repo, "feature/test")
     assert_all_valid(val)
+
+
+# ── A4: Context parameter reaches LLM prompt ────────────────────────────────
+
+async def test_context_parameter(
+    scenario_repo: GitRepo, llm_mock: LLMMockRegistry
+):
+    """Verify that the context parameter is passed through to the LLM prompt."""
+    repo = scenario_repo
+    setup_spec_on_main(repo, "docs/auth-spec.md", AUTH_SPEC)
+
+    repo.write_file("src/auth.go", AUTH_GO)
+    repo.git_add("src/auth.go")
+    repo.git_commit("Add auth code")
+
+    ann = build_annotation_for_spec(
+        AUTH_SPEC, "Token Storage", "docs/auth-spec.md",
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
+    )
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+
+    context_str = "Use bcrypt not argon2 for password hashing. TTL should be configurable."
+    result = await annotate(
+        str(repo.path),
+        code_changes=["src/auth.go"],
+        branch="feature/test",
+        context=context_str,
+    )
+    assert_annotate_ok(result)
+
+    # Verify the LLM mock received messages containing the context string
+    assert llm_mock.call_count >= 1
+    last_messages = llm_mock.last_messages
+    assert last_messages is not None
+    # The context should appear in the user message
+    user_messages = [m["content"] for m in last_messages if m["role"] == "user"]
+    assert any(context_str in msg for msg in user_messages), (
+        f"Context string not found in LLM messages: {user_messages}"
+    )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.spec_content import AUTH_SPEC
+from harness.spec_content import AUTH_SPEC, AUTH_SPEC_REWRITTEN
 from harness.code_content import AUTH_GO, AUTH_GO_EDITED, API_GO
 from harness.llm_mock import build_annotation_for_spec, LLMMockRegistry
 from harness.assertions import (
@@ -157,3 +157,62 @@ async def test_delete_annotated_code(
     val = cli_runner.validate(repo, "feature/test")
     assert_fail(val)
     assert "cannot read file" in val.stdout.lower() or "cannot read" in val.stderr.lower()
+
+
+# ── B7: Edit spec → incremental re-annotate triggers regeneration ────────────
+
+async def test_edit_spec_triggers_reannotation(
+    scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
+):
+    """When a spec file changes between pushes, annotations citing it are regenerated
+    even if the code itself didn't change."""
+    repo = scenario_repo
+    setup_spec_on_main(repo, "docs/auth-spec.md", AUTH_SPEC)
+
+    # Add code and annotate (full mode — no previous head_sha)
+    repo.write_file("src/auth.go", AUTH_GO)
+    repo.git_add("src/auth.go")
+    repo.git_commit("Add auth code")
+
+    ann = build_annotation_for_spec(
+        AUTH_SPEC, "Token Storage", "docs/auth-spec.md",
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
+    )
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+    r1 = await annotate(
+        str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
+    )
+    assert_annotate_ok(r1)
+    assert r1.get("incremental") is None  # first run is full mode
+
+    # Now edit the spec (but NOT the code) and commit
+    repo.write_file("docs/auth-spec.md", AUTH_SPEC_REWRITTEN)
+    repo.git_add("docs/auth-spec.md")
+    repo.git_commit("Rewrite token storage spec")
+
+    # Re-annotate in incremental mode (no code_changes arg → auto-detect)
+    llm_mock._responses.clear()
+    updated_ann = build_annotation_for_spec(
+        AUTH_SPEC_REWRITTEN, "Token Storage", "docs/auth-spec.md",
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
+    )
+    llm_mock.on_annotation(AnnotationResponse(annotations=[updated_ann]))
+
+    r2 = await annotate(str(repo.path), branch="feature/test")
+    assert r2["status"] == "ok"
+    assert r2.get("incremental") is True
+    # The spec changed, so the annotation citing it should be regenerated
+    assert "docs/auth-spec.md" in r2.get("specs_changed", [])
+    assert r2["annotations_regenerated"] >= 1
+    # LLM was called to regenerate
+    assert llm_mock.call_count >= 1
+
+    # Validate should pass with the new annotations
+    val = cli_runner.validate(repo, "feature/test")
+    assert_all_valid(val)
