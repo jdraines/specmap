@@ -2,9 +2,9 @@
 
 ## Prerequisites
 
-- **Python 3.11+** — for the MCP server and CLI
-- **git** — for diff analysis and branch detection
-- **uv** — recommended Python package manager ([install](https://docs.astral.sh/uv/getting-started/installation/))
+- **Python 3.11+** -- for the MCP server and CLI
+- **git** -- for diff analysis and branch detection
+- **uv** -- recommended Python package manager ([install](https://docs.astral.sh/uv/getting-started/installation/))
 - An **MCP-capable coding agent** (e.g., Claude Code)
 
 ## Install

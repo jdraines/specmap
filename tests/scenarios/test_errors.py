@@ -6,14 +6,14 @@ import pytest
 
 from harness.spec_content import AUTH_SPEC, DEEP_SPEC, UNICODE_SPEC, EMPTY_SPEC
 from harness.code_content import AUTH_GO, UNICODE_CODE
-from harness.llm_mock import build_mapping_for_spec, LLMMockRegistry
-from harness.assertions import assert_map_ok, assert_all_valid
+from harness.llm_mock import build_annotation_for_spec, LLMMockRegistry
+from harness.assertions import assert_annotate_ok, assert_all_valid
 from harness.repo import GitRepo
 from harness.cli import CLIRunner
 
-from specmap.tools.map_code_to_spec import map_code_to_spec
+from specmap.tools.annotate import annotate
 from specmap.tools.get_unmapped import get_unmapped_changes
-from specmap.llm.schemas import MappingResponse
+from specmap.llm.schemas import AnnotationResponse
 
 from conftest import setup_spec_on_main
 
@@ -23,9 +23,9 @@ from conftest import setup_spec_on_main
 async def test_empty_repo(scenario_repo: GitRepo, llm_mock: LLMMockRegistry):
     repo = scenario_repo
     # No specs, no code changes
-    result = await map_code_to_spec(str(repo.path), branch="feature/test")
+    result = await annotate(str(repo.path), branch="feature/test")
     assert result["status"] == "no_specs"
-    assert result["mappings_created"] == 0
+    assert result["annotations_created"] == 0
 
     # get_unmapped with nothing should report 100% (nothing to cover)
     unmapped = await get_unmapped_changes(str(repo.path), branch="feature/test")
@@ -38,19 +38,19 @@ async def test_spec_no_headings(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/empty.md", EMPTY_SPEC)
+    setup_spec_on_main(repo, "docs/empty.md", EMPTY_SPEC)
 
     repo.write_file("src/main.go", AUTH_GO)
     repo.git_add("src/main.go")
     repo.git_commit("Add code")
 
-    # LLM returns empty mappings (no headings to map to)
-    llm_mock.on_mapping(MappingResponse(mappings=[]))
+    # LLM returns empty annotations (no headings to reference)
+    llm_mock.on_annotation(AnnotationResponse(annotations=[]))
 
-    result = await map_code_to_spec(
+    result = await annotate(
         str(repo.path), code_changes=["src/main.go"], branch="feature/test",
     )
-    # Should not crash; may report no_changes or ok with 0 mappings
+    # Should not crash; may report no_changes or ok with 0 annotations
     assert result["status"] in ("ok", "no_changes")
 
 
@@ -60,28 +60,32 @@ async def test_deep_heading_hierarchy(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/deep.md", DEEP_SPEC)
+    setup_spec_on_main(repo, "docs/deep.md", DEEP_SPEC)
 
     repo.write_file("src/main.go", AUTH_GO)
     repo.git_add("src/main.go")
     repo.git_commit("Add code")
 
-    # Map to the deepest heading (Level 5)
-    mapping = build_mapping_for_spec(
+    # Annotate with ref to the deepest heading (Level 5)
+    ann = build_annotation_for_spec(
         DEEP_SPEC, "Level 5", "docs/deep.md",
-        ["Level 1", "Level 2", "Level 3", "Level 4", "Level 5"],
+        "Level 1 > Level 2 > Level 3 > Level 4 > Level 5",
+        code_file="src/main.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
 
-    result = await map_code_to_spec(
+    result = await annotate(
         str(repo.path), code_changes=["src/main.go"], branch="feature/test",
     )
-    assert_map_ok(result)
+    assert_annotate_ok(result)
 
-    # Verify heading_path has 5 entries
+    # Verify annotation has a ref with deep heading path
     sm = repo.read_specmap("feature/test")
-    spans = sm["mappings"][0]["spec_spans"]
-    assert len(spans[0]["heading_path"]) == 5
+    refs = sm["annotations"][0]["refs"]
+    assert len(refs) >= 1
+    assert "Level 5" in refs[0]["heading"]
 
     # CLI validate passes
     val = cli_runner.validate(repo, "feature/test")
@@ -94,24 +98,27 @@ async def test_unicode_content(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/unicode.md", UNICODE_SPEC)
+    setup_spec_on_main(repo, "docs/unicode.md", UNICODE_SPEC)
 
     repo.write_file("src/main.go", UNICODE_CODE)
     repo.git_add("src/main.go")
     repo.git_commit("Add unicode code")
 
-    mapping = build_mapping_for_spec(
+    ann = build_annotation_for_spec(
         UNICODE_SPEC, "Token-Speicherung", "docs/unicode.md",
-        ["Authentifizierung", "Token-Speicherung"],
+        "Authentifizierung > Token-Speicherung",
+        code_file="src/main.go",
+        code_start=1,
+        code_end=len(UNICODE_CODE.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
 
-    result = await map_code_to_spec(
+    result = await annotate(
         str(repo.path), code_changes=["src/main.go"], branch="feature/test",
     )
-    assert_map_ok(result)
+    assert_annotate_ok(result)
 
-    # Hashing works, validate passes
+    # Validate passes
     val = cli_runner.validate(repo, "feature/test")
     assert_all_valid(val)
 
@@ -123,7 +130,7 @@ async def test_large_diff(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/spec.md", AUTH_SPEC)
 
     # Create 12 code files
     for i in range(12):
@@ -132,20 +139,34 @@ async def test_large_diff(
     repo.git_add(".")
     repo.git_commit("Add 12 files")
 
-    # Map each file individually
-    mapping = build_mapping_for_spec(
+    # Annotate each file individually
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/pkg0.go",
+        code_start=1,
+        code_end=2,
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
 
     total = 0
     for i in range(12):
-        result = await map_code_to_spec(
+        # Update the mock to match the current file
+        llm_mock._responses.clear()
+        file_ann = build_annotation_for_spec(
+            AUTH_SPEC, "Token Storage", "docs/spec.md",
+            "Authentication > Token Storage",
+            code_file=f"src/pkg{i}.go",
+            code_start=1,
+            code_end=2,
+        )
+        llm_mock.on_annotation(AnnotationResponse(annotations=[file_ann]))
+
+        result = await annotate(
             str(repo.path), code_changes=[f"src/pkg{i}.go"],
             branch="feature/test",
         )
         if result["status"] == "ok":
-            total += result["mappings_created"]
+            total += result["annotations_created"]
 
-    assert total >= 10, f"Expected >= 10 mappings, got {total}"
+    assert total >= 10, f"Expected >= 10 annotations, got {total}"

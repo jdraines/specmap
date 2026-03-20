@@ -69,3 +69,35 @@ type Session struct {
 	Login     string `json:"login"`
 	AvatarURL string `json:"avatar_url"`
 }
+
+// SpecRef is an inline citation to a spec document within an annotation.
+type SpecRef struct {
+	ID        int    `json:"id"`
+	SpecFile  string `json:"spec_file"`
+	Heading   string `json:"heading"`
+	StartLine int    `json:"start_line"`
+	Excerpt   string `json:"excerpt"`
+}
+
+// Annotation describes a code change region with inline spec references.
+type Annotation struct {
+	ID          string    `json:"id"`
+	File        string    `json:"file"`
+	StartLine   int       `json:"start_line"`
+	EndLine     int       `json:"end_line"`
+	Description string    `json:"description"`
+	Refs        []SpecRef `json:"refs"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// SpecmapFileV2 is the persisted .specmap/{branch}.json format (v2: annotation-based).
+type SpecmapFileV2 struct {
+	Version        int          `json:"version"`
+	Branch         string       `json:"branch"`
+	BaseBranch     string       `json:"base_branch"`
+	HeadSHA        string       `json:"head_sha"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	UpdatedBy      string       `json:"updated_by"`
+	Annotations    []Annotation `json:"annotations"`
+	IgnorePatterns []string     `json:"ignore_patterns"`
+}

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from specmap.llm.schemas import MappingResponse, MappingResult, ReindexResult
+from specmap.llm.schemas import AnnotationRef, AnnotationResponse, AnnotationResult
 
 
 # ---------------------------------------------------------------------------
@@ -58,11 +58,8 @@ class LLMMockRegistry:
 
     # --- registration ---
 
-    def on_mapping(self, response: MappingResponse, match_fn: Callable | None = None):
-        self._responses.append(("mapping", match_fn or _always_true, response))
-
-    def on_reindex(self, response: ReindexResult, match_fn: Callable | None = None):
-        self._responses.append(("reindex", match_fn or _always_true, response))
+    def on_annotation(self, response: AnnotationResponse, match_fn: Callable | None = None):
+        self._responses.append(("annotation", match_fn or _always_true, response))
 
     # --- call log inspection ---
 
@@ -90,11 +87,9 @@ class LLMMockRegistry:
                 return MockLLMResponse.from_json(json_str)
 
         # Fallback: return an empty-but-valid response
-        if call_type == "mapping":
-            return MockLLMResponse.from_json(MappingResponse(mappings=[]).model_dump_json())
-        if call_type == "reindex":
+        if call_type == "annotation":
             return MockLLMResponse.from_json(
-                ReindexResult(found=False, reasoning="no mock matched").model_dump_json()
+                AnnotationResponse(annotations=[]).model_dump_json()
             )
         return MockLLMResponse.from_json("{}")
 
@@ -103,15 +98,13 @@ def _classify_call(response_format) -> str | None:
     if response_format is None:
         return None
     name = getattr(response_format, "__name__", "")
-    if name == "MappingResponse":
-        return "mapping"
-    if name == "ReindexResult":
-        return "reindex"
+    if name == "AnnotationResponse":
+        return "annotation"
     return None
 
 
 # ---------------------------------------------------------------------------
-# Helpers: build deterministic LLM responses with correct offsets
+# Helpers: build deterministic LLM responses with correct line numbers
 # ---------------------------------------------------------------------------
 
 def _find_heading(spec_content: str, heading_text: str):
@@ -133,70 +126,65 @@ def _line_offset(lines: list[str], line_idx: int) -> int:
     return sum(len(lines[j]) + 1 for j in range(line_idx))
 
 
-def build_mapping_for_spec(
-    spec_content: str,
-    heading_text: str,
-    spec_file: str,
-    heading_path: list[str],
-    relevance: float = 0.95,
-) -> MappingResult:
-    """Build a MappingResult with correct span_offset/span_length for a spec heading."""
+def _extract_section_content(spec_content: str, heading_text: str) -> tuple[int, str]:
+    """Extract section content and start line for a heading.
+
+    Returns (start_line_1based, section_content).
+    """
     line_idx, level, lines = _find_heading(spec_content, heading_text)
     if line_idx is None:
         raise ValueError(f"Heading '{heading_text}' not found in spec content")
 
-    heading_offset = _line_offset(lines, line_idx)
-
-    # Find end: next heading of same or higher (numerically <=) level
-    section_end = len(spec_content)
+    # Find end: next heading of same or higher level
+    end_idx = len(lines)
     for i in range(line_idx + 1, len(lines)):
         stripped = lines[i].strip()
         if not stripped.startswith("#"):
             continue
         h_level = len(stripped) - len(stripped.lstrip("#"))
         if h_level <= level:
-            section_end = _line_offset(lines, i)
+            end_idx = i
             break
 
-    return MappingResult(
-        spec_file=spec_file,
-        heading_path=heading_path,
-        span_offset=heading_offset,
-        span_length=section_end - heading_offset,
-        relevance=relevance,
-        reasoning="Mock mapping",
-    )
+    content = "\n".join(lines[line_idx:end_idx]).strip()
+    # Extract just the body (skip heading line)
+    body_lines = lines[line_idx + 1:end_idx]
+    body = "\n".join(body_lines).strip()
+
+    return line_idx + 1, body  # 1-based line number
 
 
-def build_reindex_result(
+def build_annotation_for_spec(
     spec_content: str,
     heading_text: str,
     spec_file: str,
-    heading_path: list[str],
+    heading_path: str,  # e.g. "Authentication > Token Storage"
+    code_file: str,
+    code_start: int = 1,
+    code_end: int = 31,
     relevance: float = 0.95,
-) -> ReindexResult:
-    """Build a ReindexResult with correct span_offset/span_length."""
-    line_idx, level, lines = _find_heading(spec_content, heading_text)
-    if line_idx is None:
-        return ReindexResult(found=False, reasoning=f"Heading '{heading_text}' not found")
+) -> AnnotationResult:
+    """Build an AnnotationResult with correct spec references."""
+    start_line, excerpt = _extract_section_content(spec_content, heading_text)
 
-    heading_offset = _line_offset(lines, line_idx)
-    section_end = len(spec_content)
-    for i in range(line_idx + 1, len(lines)):
-        stripped = lines[i].strip()
-        if not stripped.startswith("#"):
-            continue
-        h_level = len(stripped) - len(stripped.lstrip("#"))
-        if h_level <= level:
-            section_end = _line_offset(lines, i)
-            break
+    # Truncate excerpt to first 2 sentences
+    sentences = excerpt.split(". ")
+    if len(sentences) > 2:
+        excerpt = ". ".join(sentences[:2]) + "."
 
-    return ReindexResult(
-        found=True,
-        spec_file=spec_file,
-        heading_path=heading_path,
-        span_offset=heading_offset,
-        span_length=section_end - heading_offset,
-        relevance=relevance,
-        reasoning="Mock reindex",
+    return AnnotationResult(
+        file=code_file,
+        start_line=code_start,
+        end_line=code_end,
+        description=f"Implements {heading_text.lower()} functionality. [1]",
+        refs=[
+            AnnotationRef(
+                ref_number=1,
+                spec_file=spec_file,
+                heading=heading_path,
+                start_line=start_line,
+                excerpt=excerpt,
+            ),
+        ],
+        reasoning="Mock annotation",
     )

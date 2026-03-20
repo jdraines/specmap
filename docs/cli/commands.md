@@ -2,7 +2,7 @@
 
 ## validate
 
-Checks the structural integrity of `.specmap/{branch}.json` by verifying all hashes against current file contents.
+Checks the structural validity of `.specmap/{branch}.json` by verifying that all annotated line ranges exist in the current code files.
 
 ### Usage
 
@@ -16,30 +16,28 @@ Inherits [global flags](overview.md#global-flags) only.
 
 ### What It Checks
 
-- **Spec document hashes** (`doc_hash`) — re-hashes the spec file and compares
-- **Code target hashes** (`content_hash`) — re-hashes the code line range and compares
-- **Spec span hashes** (`span_hash`) — re-hashes the span text and compares
+- **File existence** -- verifies that each annotated file exists in the repo
+- **Line range validity** -- verifies that `start_line` and `end_line` are within the file's actual line count
+- **Schema validity** -- verifies the specmap file conforms to the v2 schema
 
 ### Example Output
 
 ```
-✓ docs/auth.md doc_hash valid
-✓ auth/session.go:15-42 content_hash valid
-✓ auth/session.go:44-61 content_hash valid
-✗ auth/hash.go:8-23 content_hash MISMATCH
-  expected: sha256:a1b2c3d4e5f6g7h8
-  actual:   sha256:z9y8x7w6v5u4t3s2
+[ok] auth/session.go:15-42 valid
+[ok] auth/session.go:44-61 valid
+[ok] auth/hash.go:8-23 valid
+[err] auth/old.go:10-25 file not found
 
 Validation: 3/4 passed
 ```
 
-Exits with code 1 if any hash mismatches are found.
+Exits with code 1 if any validation errors are found.
 
 ---
 
 ## status
 
-Displays a human-readable summary of the current branch's specmap state.
+Displays a human-readable summary of the current branch's annotations.
 
 ### Usage
 
@@ -54,21 +52,25 @@ Inherits [global flags](overview.md#global-flags) only.
 ### Example Output
 
 ```
-Spec Documents:
-  docs/auth.md (3 sections)
-  docs/api.md (5 sections)
+Branch: feature/add-auth (base: main)
+Head SHA: a1b2c3d4
 
-Mappings: 12 total, 10 valid, 2 stale
-  auth/session.go:15-42  → auth.md > Authentication > Token Storage
-  auth/session.go:44-61  → auth.md > Authentication > Token Storage
-  auth/hash.go:8-23      → auth.md > Authentication > Password Hashing
-  api/router.go:30-55    → api.md > Routes > User Endpoints
+Annotations: 12 total across 5 files
+
+  auth/session.go (3 annotations)
+    :15-42  Implements JWT session token creation and validation with
+            httpOnly cookie storage [1] and 24-hour expiry [2].
+    :44-61  Handles token refresh middleware that silently renews
+            expired tokens on each API request [1].
+    :63-78  Session cleanup on explicit logout [1].
+
+  auth/hash.go (2 annotations)
+    :8-23   Bcrypt password hashing with cost factor 12 [1].
+    :25-40  Password verification with constant-time comparison [1].
+
   ...
 
-Stale mappings:
-  ✗ auth/middleware.go:10-28 → auth.md > Authentication > Middleware
-    (code content_hash mismatch)
-
+Coverage: 10/12 annotations have spec refs
 Run 'specmap check' for coverage details.
 ```
 
@@ -88,7 +90,7 @@ specmap check [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--threshold` | `0.0` | Minimum coverage ratio (0.0–1.0). Exits 1 if below. |
+| `--threshold` | `0.0` | Minimum coverage ratio (0.0-1.0). Exits 1 if below. |
 | `--base` | From specmap file | Base branch for diff comparison |
 | `--json` | `false` | Output JSON instead of human-readable text |
 
@@ -98,13 +100,11 @@ Plus [global flags](overview.md#global-flags).
 
 ```
 specmap: checking coverage for feature/add-auth (base: main)
-Files: 10/12 mapped | Lines: 245/298 mapped
-Unmapped:
+Files: 10/12 covered | Lines: 245/298 covered
+Uncovered:
   auth/middleware.go (0%, 38 lines)
   hooks/useAuth.ts (0%, 15 lines)
-Stale:
-  auth/session.go:15-42 (hash mismatch)
-Overall: 82.2% (threshold: 80.0%) — PASS
+Overall: 82.2% (threshold: 80.0%) -- PASS
 ```
 
 ### JSON Output
@@ -116,26 +116,18 @@ Use `--json` for machine-readable output (useful in CI scripts):
   "branch": "feature/add-auth",
   "base_branch": "main",
   "total_files": 12,
-  "mapped_files": 10,
+  "covered_files": 10,
   "total_lines": 298,
-  "mapped_lines": 245,
+  "covered_lines": 245,
   "coverage": 0.822,
   "threshold": 0.80,
   "pass": true,
-  "unmapped": [
+  "uncovered": [
     {
       "file": "auth/middleware.go",
       "coverage": 0.0,
       "total_lines": 38,
-      "mapped_lines": 0
-    }
-  ],
-  "stale": [
-    {
-      "file": "auth/session.go",
-      "start_line": 15,
-      "end_line": 42,
-      "reason": "hash mismatch"
+      "covered_lines": 0
     }
   ]
 }

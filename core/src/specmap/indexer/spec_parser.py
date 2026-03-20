@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import mistune
 
-from specmap.indexer.hasher import hash_document, hash_section
-from specmap.state.models import SpecDocument, SpecSection
+from specmap.indexer.hasher import hash_content
+
+
+@dataclass
+class SpecSection:
+    """A section within a parsed spec document."""
+
+    heading_path: list[str]
+    heading_line: int
+    section_hash: str
+
+
+@dataclass
+class SpecDocument:
+    """A parsed spec document with its sections."""
+
+    doc_hash: str
+    sections: dict[str, SpecSection] = field(default_factory=dict)
 
 
 class SpecParser:
@@ -17,7 +35,7 @@ class SpecParser:
         Returns a SpecDocument with doc_hash and sections dict keyed by
         "Heading1 > Heading2 > Heading3" paths.
         """
-        doc_hash = hash_document(content)
+        doc_hash = hash_content(content)
         sections: dict[str, SpecSection] = {}
 
         # Use mistune's AST renderer to walk the document tree
@@ -46,7 +64,7 @@ class SpecParser:
                     break
 
             section_content = content[start_offset:end_offset]
-            section_h = hash_section(section_content)
+            section_h = hash_content(section_content)
 
             # Build heading_path from ancestor headings
             heading_path = _build_heading_path(headings, i)

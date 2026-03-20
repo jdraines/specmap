@@ -8,7 +8,7 @@ graph TB
         Agent[Coding Agent<br/>e.g. Claude Code]
         MCP[Specmap MCP Server<br/>Python]
         SF[".specmap/{branch}.json"]
-        CLI[Specmap CLI<br/>Go]
+        CLI[Specmap CLI<br/>Python]
         Specs[Spec Documents<br/>*.md]
         Code[Source Code]
     end
@@ -33,26 +33,26 @@ graph TB
 
 ## Data Flow
 
-1. **Agent changes code** — the coding agent creates or modifies source files
-2. **MCP tool call** — the agent calls `specmap_map` via the MCP stdio protocol
-3. **Diff & parse** — the MCP server runs `git diff` to find changes, parses spec documents into sections
-4. **LLM mapping** — the server asks the LLM which spec spans describe the intent behind each code change
-5. **Persist** — mappings are written to `.specmap/{branch}.json` as hashes and pointers
-6. **CLI validates** — in CI, the CLI reads the specmap file, computes coverage against the base branch, and enforces a threshold
+1. **Agent changes code** -- the coding agent creates or modifies source files
+2. **MCP tool call** -- the agent calls `specmap_annotate` via the MCP stdio protocol
+3. **Diff analysis** -- the MCP server runs `git diff` to find changes (full diff on first push, incremental diff on subsequent pushes)
+4. **LLM annotation** -- the server sends the diff and spec files to the LLM, which generates natural-language descriptions with `[N]` spec citations
+5. **Persist** -- annotations are written to `.specmap/{branch}.json` with the current `head_sha`
+6. **CLI validates** -- in CI, the CLI reads the specmap file, computes coverage against the base branch, and enforces a threshold
 
 ## Component Responsibilities
 
 | Component | Language | Responsibility | Makes LLM calls? |
 |---|---|---|---|
-| MCP Server | Python | Create and maintain mappings | Yes |
-| CLI | Go | Validate mappings, enforce coverage | No |
-| `.specmap/` files | JSON | Store mappings (hashes + pointers only) | — |
-| Spec documents | Markdown | Source of truth for requirements | — |
+| MCP Server | Python | Generate and maintain annotations | Yes |
+| CLI | Python | Validate annotations, enforce coverage | No |
+| `.specmap/` files | JSON | Store annotations with spec references | -- |
+| Spec documents | Markdown | Source of truth for requirements | -- |
 
 ## Design Principles
 
-**No text in `.specmap/`**
-: The specmap file stores only hashes, file paths, and line ranges — never raw spec or code text. This keeps the file small, avoids duplication, and ensures the source files remain the single source of truth.
+**Annotations with spec citations**
+: The specmap file stores natural-language descriptions of code regions with inline `[N]` references to spec locations. Spec excerpts provide context, but the spec documents remain the source of truth.
 
 **BYOK (Bring Your Own Key)**
 : The MCP server never bundles API keys or requires a specific provider. Users configure their preferred LLM via environment variables.

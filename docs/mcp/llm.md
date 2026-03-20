@@ -1,6 +1,6 @@
 # LLM Integration
 
-Specmap uses LLM calls to understand the semantic relationship between spec text and code. The MCP server wraps [litellm](https://docs.litellm.ai/) for provider-agnostic model access.
+Specmap uses LLM calls to generate annotations -- natural-language descriptions of code regions with inline spec citations. The MCP server wraps [litellm](https://docs.litellm.ai/) for provider-agnostic model access.
 
 ## BYOK via litellm
 
@@ -31,7 +31,7 @@ export SPECMAP_MODEL="gpt-4o-mini"
 
 ## Token Tracking
 
-Every `specmap_map` response includes LLM usage metrics:
+Every `specmap_annotate` response includes LLM usage metrics:
 
 ```json
 {
@@ -57,18 +57,18 @@ The LLM client uses exponential backoff for transient errors:
 
 LLM responses are parsed into Pydantic models for reliability:
 
-- **`MappingResponse`** — used by `specmap_map` to get a list of spec-to-code mappings with relevance scores and reasoning
-- **`ReindexResult`** — used by `specmap_reindex` to determine if a mapping can be relocated in updated content
+- **`AnnotationResponse`** -- used by `specmap_annotate` to get a list of annotations, each with a natural-language description and `[N]` spec citations pointing to specific spec file locations
 
 If the LLM returns invalid JSON, the call is retried.
 
 ## Cost Optimization
 
-Specmap minimizes LLM calls through hierarchical hashing:
+Specmap minimizes LLM calls through diff-based optimization:
 
-1. **Document hash** — if unchanged, skip the entire document
-2. **Section hash** — if unchanged, skip sections within a changed document
-3. **Span hash** — if unchanged, skip individual spans within a changed section
-4. **Code hash** — if the mapped code region is unchanged, skip the mapping entirely
+1. **First push** -- `git diff base_branch...HEAD` produces the full diff; the LLM annotates all changed code
+2. **Subsequent pushes** -- `git diff {head_sha}..HEAD` produces an incremental diff; existing annotations are classified:
+   - **Keep** -- annotation not affected by the incremental diff
+   - **Shift** -- annotation's line numbers adjusted mechanically (no LLM call)
+   - **Regenerate** -- annotation overlaps with changed hunks; sent to LLM
 
-During reindexing, Specmap first tries deterministic relocation strategies (exact offset, exact match anywhere, fuzzy match) before falling back to an LLM call. Most mappings are relocated without any LLM involvement.
+Most annotations on subsequent pushes are either kept or shifted without any LLM involvement, keeping costs proportional to the incremental change size.

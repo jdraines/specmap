@@ -2,33 +2,31 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
-class MappingResult(BaseModel):
-    """Single mapping from LLM."""
+class AnnotationRef(BaseModel):
+    """A spec reference within an annotation result."""
 
+    ref_number: int  # Matches [N] in description
     spec_file: str
-    heading_path: list[str]
-    span_offset: int
-    span_length: int
-    relevance: float = Field(ge=0.0, le=1.0)
-    reasoning: str  # not stored, for debugging
+    heading: str
+    start_line: int  # Line in spec where excerpt begins
+    excerpt: str  # Short excerpt (1-3 sentences)
 
 
-class MappingResponse(BaseModel):
-    """LLM response for mapping code to spec."""
+class AnnotationResult(BaseModel):
+    """Single annotation from LLM describing a code region."""
 
-    mappings: list[MappingResult]
+    file: str
+    start_line: int
+    end_line: int
+    description: str  # Natural language with [N] references
+    refs: list[AnnotationRef]
+    reasoning: str  # Not stored, for debugging
 
 
-class ReindexResult(BaseModel):
-    """LLM response for re-indexing a stale mapping."""
+class AnnotationResponse(BaseModel):
+    """LLM response containing annotations for code regions."""
 
-    found: bool
-    spec_file: str | None = None
-    heading_path: list[str] | None = None
-    span_offset: int | None = None
-    span_length: int | None = None
-    relevance: float | None = None
-    reasoning: str
+    annotations: list[AnnotationResult]

@@ -1,4 +1,4 @@
-"""specmap validate — check hash integrity of all mappings."""
+"""specmap validate — check that annotated code regions still exist."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from specmap.state.specmap_file import SpecmapFileManager
 
 @app.command()
 def validate(ctx: typer.Context):
-    """Validate specmap file schema and hash integrity."""
+    """Validate specmap file: check that annotated line ranges are in bounds."""
     repo_root: str = ctx.obj["repo_root"]
     branch: str = ctx.obj["branch"]
     no_color: bool = ctx.obj["no_color"]
@@ -46,19 +46,14 @@ def validate(ctx: typer.Context):
             indicator = cross_mark(no_color)
             invalid += 1
 
-        label = "Spec"
-        loc = r.file
-        if r.lines:
-            label = "Code"
-            loc = f"{r.file}:{r.lines}"
-
-        console.print(f"{indicator} {label}: {loc} ({r.message})")
+        loc = f"{r.file}:{r.lines}" if r.lines else r.file
+        console.print(f"{indicator} {loc} ({r.message})")
 
     if invalid == 0:
-        console.print(f"{check_mark(no_color)} {valid}/{total} mappings valid")
+        console.print(f"{check_mark(no_color)} {valid}/{total} annotations valid")
     else:
         console.print(
-            f"{cross_mark(no_color)} {valid}/{total} mappings valid, "
-            f"{invalid} hash mismatch"
+            f"{cross_mark(no_color)} {valid}/{total} annotations valid, "
+            f"{invalid} invalid"
         )
         raise typer.Exit(code=1)

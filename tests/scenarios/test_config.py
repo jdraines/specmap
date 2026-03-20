@@ -9,12 +9,12 @@ import pytest
 
 from harness.spec_content import AUTH_SPEC
 from harness.code_content import AUTH_GO
-from harness.llm_mock import build_mapping_for_spec, LLMMockRegistry
-from harness.assertions import assert_map_ok
+from harness.llm_mock import build_annotation_for_spec, LLMMockRegistry
+from harness.assertions import assert_annotate_ok
 from harness.repo import GitRepo
 
-from specmap.tools.map_code_to_spec import map_code_to_spec
-from specmap.llm.schemas import MappingResponse
+from specmap.tools.annotate import annotate
+from specmap.llm.schemas import AnnotationResponse
 from specmap.config import SpecmapConfig
 
 
@@ -40,23 +40,28 @@ async def test_custom_spec_patterns(
     repo.git_add("specs/auth.txt", "docs/auth-spec.md", "src/auth.go", ".specmap/config.json")
     repo.git_commit("Add specs and code")
 
-    # Mock maps to the .txt spec
-    mapping = build_mapping_for_spec(
+    # Mock annotates with ref to the .txt spec
+    ann = build_annotation_for_spec(
         txt_spec, "Token Storage", "specs/auth.txt",
-        ["Auth Spec", "Token Storage"],
+        "Auth Spec > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
 
-    result = await map_code_to_spec(
+    result = await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
-    assert_map_ok(result)
+    assert_annotate_ok(result)
 
-    # Verify only the .txt spec was used (not the .md)
+    # Verify specs/auth.txt was found as a spec (it's referenced in annotations)
     sm = repo.read_specmap("feature/test")
-    spec_files = list(sm.get("spec_documents", {}).keys())
-    assert "specs/auth.txt" in spec_files
-    assert "docs/auth-spec.md" not in spec_files
+    ref_spec_files = set()
+    for a in sm.get("annotations", []):
+        for ref in a.get("refs", []):
+            ref_spec_files.add(ref["spec_file"])
+    assert "specs/auth.txt" in ref_spec_files
 
 
 # ── F22: Custom ignore patterns ─────────────────────────────────────────────
@@ -83,23 +88,26 @@ async def test_custom_ignore_patterns(
     repo.git_add("src/auth.go", "src/auth_test.go")
     repo.git_commit("Add code")
 
-    mapping = build_mapping_for_spec(
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
 
-    result = await map_code_to_spec(
+    result = await annotate(
         str(repo.path), code_changes=["src/auth.go", "src/auth_test.go"],
         branch="feature/test",
     )
-    # map_code_to_spec filters ignored files — auth_test.go should be skipped
+    # annotate filters ignored files — auth_test.go should be skipped
     assert result["status"] == "ok"
 
-    # Verify test file is not in mappings
+    # Verify test file is not in annotations
     sm = repo.read_specmap("feature/test")
-    mapped_files = {m["code_target"]["file"] for m in sm["mappings"]}
-    assert "src/auth_test.go" not in mapped_files
+    annotated_files = {a["file"] for a in sm["annotations"]}
+    assert "src/auth_test.go" not in annotated_files
 
 
 # ── F23: Env vars override config file ──────────────────────────────────────

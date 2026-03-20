@@ -1,4 +1,4 @@
-"""specmap status — human-readable mapping summary."""
+"""specmap status — human-readable annotation summary."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from specmap.state.specmap_file import SpecmapFileManager
 
 @app.command()
 def status(ctx: typer.Context):
-    """Show human-readable mapping summary."""
+    """Show human-readable annotation summary."""
     repo_root: str = ctx.obj["repo_root"]
     branch: str = ctx.obj["branch"]
     no_color: bool = ctx.obj["no_color"]
@@ -27,52 +27,34 @@ def status(ctx: typer.Context):
 
     console.print(f"specmap: status for {sf.branch} (base: {sf.base_branch})\n")
 
-    # Spec Documents summary.
-    console.print("Spec Documents:")
-    for doc_path, doc in sf.spec_documents.items():
-        section_count = len(doc.sections)
-        mapping_count = 0
-        for m in sf.mappings:
-            for span in m.spec_spans:
-                if span.spec_file == doc_path:
-                    mapping_count += 1
-                    break
-        console.print(f"  {doc_path} ({section_count} sections, {mapping_count} mappings)")
+    if sf.head_sha:
+        console.print(f"Head SHA: {sf.head_sha[:12]}")
 
-    # Overall mapping stats.
-    total_mappings = len(sf.mappings)
-    stale_mappings = 0
-    stale_details: list[dict] = []
+    # Annotations summary
+    total_annotations = len(sf.annotations)
+    with_refs = sum(1 for a in sf.annotations if a.refs)
+    without_refs = total_annotations - with_refs
 
-    for m in sf.mappings:
-        if m.stale:
-            stale_mappings += 1
-            heading = ""
-            spec_file = ""
-            if m.spec_spans:
-                spec_file = m.spec_spans[0].spec_file
-                heading = " > ".join(m.spec_spans[0].heading_path)
-            stale_details.append({
-                "file": m.code_target.file,
-                "start_line": m.code_target.start_line,
-                "end_line": m.code_target.end_line,
-                "spec_file": spec_file,
-                "heading": heading,
-            })
+    console.print(f"\nAnnotations: {total_annotations} total")
+    if total_annotations > 0:
+        console.print(f"  With spec refs: {with_refs}")
+        console.print(f"  Without spec refs: {without_refs}")
 
-    valid_mappings = total_mappings - stale_mappings
-    console.print(
-        f"\nMappings: {total_mappings} total "
-        f"({valid_mappings} valid, {stale_mappings} stale)"
-    )
+    # Group by file
+    by_file: dict[str, list] = {}
+    for ann in sf.annotations:
+        by_file.setdefault(ann.file, []).append(ann)
 
-    if stale_details:
-        console.print("Stale:")
-        for s in stale_details:
-            target = f"{s['file']}:{s['start_line']}-{s['end_line']}"
-            spec = s["spec_file"]
-            if s["heading"]:
-                spec += " > " + s["heading"]
-            console.print(f"  {target} \u2192 {spec}")
+    if by_file:
+        console.print(f"\nFiles ({len(by_file)}):")
+        for file_path in sorted(by_file.keys()):
+            anns = by_file[file_path]
+            ref_count = sum(len(a.refs) for a in anns)
+            console.print(
+                f"  {file_path} ({len(anns)} annotations, {ref_count} spec refs)"
+            )
+            for ann in anns:
+                desc = ann.description[:80] + "..." if len(ann.description) > 80 else ann.description
+                console.print(f"    L{ann.start_line}-{ann.end_line}: {desc}")
 
     console.print("\nCoverage: see 'specmap check' for coverage details")

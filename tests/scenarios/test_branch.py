@@ -6,13 +6,13 @@ import pytest
 
 from harness.spec_content import AUTH_SPEC, API_SPEC
 from harness.code_content import AUTH_GO, API_GO
-from harness.llm_mock import build_mapping_for_spec, LLMMockRegistry
-from harness.assertions import assert_map_ok, assert_check_json_pass
+from harness.llm_mock import build_annotation_for_spec, LLMMockRegistry
+from harness.assertions import assert_annotate_ok, assert_check_json_pass
 from harness.repo import GitRepo
 from harness.cli import CLIRunner
 
-from specmap.tools.map_code_to_spec import map_code_to_spec
-from specmap.llm.schemas import MappingResponse
+from specmap.tools.annotate import annotate
+from specmap.llm.schemas import AnnotationResponse
 
 from conftest import setup_spec_on_main
 
@@ -23,21 +23,24 @@ async def test_feature_branch_check_vs_main(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/auth-spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/auth-spec.md", AUTH_SPEC)
 
     repo.write_file("src/auth.go", AUTH_GO)
     repo.git_add("src/auth.go")
     repo.git_commit("Add auth on feature")
 
-    mapping = build_mapping_for_spec(
+    ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/auth-spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[mapping]))
-    result = await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[ann]))
+    result = await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
-    assert_map_ok(result)
+    assert_annotate_ok(result)
 
     # Check computes coverage against diff from main
     chk = cli_runner.check(repo, "feature/test", base="main")
@@ -52,7 +55,7 @@ async def test_multiple_commits_cumulative(
     scenario_repo: GitRepo, llm_mock: LLMMockRegistry, cli_runner: CLIRunner
 ):
     repo = scenario_repo
-    setup_spec_on_main(repo,"docs/auth-spec.md", AUTH_SPEC)
+    setup_spec_on_main(repo, "docs/auth-spec.md", AUTH_SPEC)
 
     # Also add API spec on main
     setup_spec_on_main(repo, "docs/api-spec.md", API_SPEC)
@@ -62,33 +65,39 @@ async def test_multiple_commits_cumulative(
     repo.git_add("src/auth.go")
     repo.git_commit("Commit 1: auth")
 
-    auth_mapping = build_mapping_for_spec(
+    auth_ann = build_annotation_for_spec(
         AUTH_SPEC, "Token Storage", "docs/auth-spec.md",
-        ["Authentication", "Token Storage"],
+        "Authentication > Token Storage",
+        code_file="src/auth.go",
+        code_start=1,
+        code_end=len(AUTH_GO.splitlines()),
     )
-    llm_mock.on_mapping(MappingResponse(mappings=[auth_mapping]))
-    r1 = await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[auth_ann]))
+    r1 = await annotate(
         str(repo.path), code_changes=["src/auth.go"], branch="feature/test",
     )
-    assert_map_ok(r1)
+    assert_annotate_ok(r1)
 
     # Commit 2: api.go
     repo.write_file("src/api.go", API_GO)
     repo.git_add("src/api.go")
     repo.git_commit("Commit 2: api")
 
-    api_mapping = build_mapping_for_spec(
+    api_ann = build_annotation_for_spec(
         API_SPEC, "Endpoints", "docs/api-spec.md",
-        ["API Design", "Endpoints"],
+        "API Design > Endpoints",
+        code_file="src/api.go",
+        code_start=1,
+        code_end=len(API_GO.splitlines()),
     )
     llm_mock._responses.clear()
-    llm_mock.on_mapping(MappingResponse(mappings=[api_mapping]))
-    r2 = await map_code_to_spec(
+    llm_mock.on_annotation(AnnotationResponse(annotations=[api_ann]))
+    r2 = await annotate(
         str(repo.path), code_changes=["src/api.go"], branch="feature/test",
     )
-    assert_map_ok(r2)
+    assert_annotate_ok(r2)
 
-    # Both mappings contribute to cumulative coverage
+    # Both annotations contribute to cumulative coverage
     chk = cli_runner.check(repo, "feature/test", base="main")
     assert_check_json_pass(chk)
     assert chk.json_data["coverage"] == 1.0

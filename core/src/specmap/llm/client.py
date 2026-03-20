@@ -84,7 +84,7 @@ class LLMClient:
                     file=sys.stderr,
                 )
                 await asyncio.sleep(wait)
-            except Exception as e:
+            except Exception:
                 # Non-transient error, don't retry
                 raise
 

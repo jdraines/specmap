@@ -1,10 +1,10 @@
 # Tools Reference
 
-The MCP server exposes four tools. All parameters are optional — the server auto-detects sensible defaults from the git repo.
+The MCP server exposes three tools. All parameters are optional -- the server auto-detects sensible defaults from the git repo.
 
-## specmap_map
+## specmap_annotate
 
-Creates mappings between code changes and spec sections using an LLM.
+Generates annotations for code changes using an LLM. Each annotation is a natural-language description of a code region with `[N]` inline citations referencing spec locations.
 
 **When to use:** After writing or modifying code, to record which spec requirements the changes implement.
 
@@ -14,7 +14,7 @@ Creates mappings between code changes and spec sections using an LLM.
 |---|---|---|---|
 | `repo_root` | `string` | Auto-detect from `.git/` | Path to repository root |
 | `code_changes` | `string[]` | Auto-detect from `git diff` | File paths to analyze |
-| `spec_files` | `string[]` | Auto-discover from glob patterns | Spec files to map against |
+| `spec_files` | `string[]` | Auto-discover from glob patterns | Spec files to reference |
 | `branch` | `string` | Current git branch | Branch name for the specmap file |
 
 ### Output
@@ -22,10 +22,11 @@ Creates mappings between code changes and spec sections using an LLM.
 ```json
 {
   "status": "ok",
-  "mappings_created": 3,
-  "mappings_updated": 1,
-  "total_mappings": 12,
-  "spec_files_parsed": 2,
+  "annotations_created": 3,
+  "annotations_updated": 1,
+  "annotations_kept": 8,
+  "total_annotations": 12,
+  "spec_files_read": 2,
   "code_changes_analyzed": 4,
   "llm_usage": {
     "total_input_tokens": 2450,
@@ -36,15 +37,15 @@ Creates mappings between code changes and spec sections using an LLM.
 }
 ```
 
-**Status values:** `ok` (mappings created), `no_specs` (no spec files found), `no_changes` (no code changes detected).
+**Status values:** `ok` (annotations generated), `no_specs` (no spec files found), `no_changes` (no code changes detected).
 
 ---
 
 ## specmap_check
 
-Verifies that existing mappings are still valid by checking hashes against current file contents.
+Verifies that existing annotations are still valid by checking that their line ranges exist in the current code files.
 
-**When to use:** To see if any mappings have become stale after code or spec edits.
+**When to use:** To see if any annotations have become invalid after code edits (e.g., file deleted, line range out of bounds).
 
 ### Parameters
 
@@ -52,7 +53,7 @@ Verifies that existing mappings are still valid by checking hashes against curre
 |---|---|---|---|
 | `repo_root` | `string` | Auto-detect | Path to repository root |
 | `branch` | `string` | Current branch | Branch name |
-| `files` | `string[]` | All mapped files | Specific files to check |
+| `files` | `string[]` | All annotated files | Specific files to check |
 
 ### Output
 
@@ -60,15 +61,15 @@ Verifies that existing mappings are still valid by checking hashes against curre
 {
   "status": "ok",
   "valid": 10,
-  "relocated": 2,
-  "stale": 1,
-  "total": 13,
-  "stale_details": [
+  "invalid": 1,
+  "total": 11,
+  "invalid_details": [
     {
-      "mapping_id": "m_a1b2c3d4e5f6",
-      "code_file": "auth/session.go",
-      "code_lines": "15-42",
-      "spec_spans": ["docs/auth.md (Authentication > Token Storage)"]
+      "annotation_id": "ann_a1b2c3d4e5f6",
+      "file": "auth/session.go",
+      "start_line": 15,
+      "end_line": 42,
+      "reason": "file has only 30 lines"
     }
   ]
 }
@@ -78,7 +79,7 @@ Verifies that existing mappings are still valid by checking hashes against curre
 
 ## specmap_unmapped
 
-Reports coverage per file — which changed lines have mappings and which don't.
+Reports coverage per file -- which changed lines have annotations with spec references and which don't.
 
 **When to use:** To find gaps in spec coverage before opening a PR.
 
@@ -89,7 +90,7 @@ Reports coverage per file — which changed lines have mappings and which don't.
 | `repo_root` | `string` | Auto-detect | Path to repository root |
 | `branch` | `string` | Current branch | Branch name |
 | `base_branch` | `string` | From specmap file | Base branch for diff |
-| `threshold` | `number` | — | Only report files below this coverage (0.0–1.0) |
+| `threshold` | `number` | -- | Only report files below this coverage (0.0-1.0) |
 
 ### Output
 
@@ -98,63 +99,23 @@ Reports coverage per file — which changed lines have mappings and which don't.
   "status": "ok",
   "overall_coverage": 0.82,
   "total_changed_lines": 298,
-  "mapped_lines": 245,
-  "unmapped_lines": 53,
+  "covered_lines": 245,
+  "uncovered_lines": 53,
   "files": {
     "auth/middleware.go": {
       "changed_lines": 38,
-      "mapped_lines": 0,
-      "unmapped_lines": 38,
+      "covered_lines": 0,
+      "uncovered_lines": 38,
       "coverage": 0.0,
-      "unmapped_ranges": [{"start": 1, "end": 38}]
+      "uncovered_ranges": [{"start": 1, "end": 38}]
     },
     "auth/session.go": {
       "changed_lines": 65,
-      "mapped_lines": 65,
-      "unmapped_lines": 0,
+      "covered_lines": 65,
+      "uncovered_lines": 0,
       "coverage": 1.0,
-      "unmapped_ranges": []
+      "uncovered_ranges": []
     }
   }
 }
 ```
-
----
-
-## specmap_reindex
-
-Re-indexes mappings after specs or code have changed. Uses hierarchical hashing to minimize work — only re-examines documents, sections, or spans whose hashes differ.
-
-**When to use:** After editing spec documents or refactoring code, to update mappings without re-mapping from scratch.
-
-### Parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `repo_root` | `string` | Auto-detect | Path to repository root |
-| `spec_files` | `string[]` | All specs | Specific spec files to re-index |
-| `code_files` | `string[]` | All mapped code | Specific code files to re-index |
-| `force` | `boolean` | `false` | Re-index everything regardless of hash changes |
-
-### Output
-
-```json
-{
-  "status": "ok",
-  "unchanged": 8,
-  "relocated": 3,
-  "stale": 1,
-  "remapped": 2,
-  "docs_skipped": 1,
-  "sections_skipped": 4,
-  "total_mappings": 14
-}
-```
-
-**Field meanings:**
-
-- `unchanged` — mappings whose hashes still match (no work needed)
-- `relocated` — mappings found at a different offset via exact or fuzzy match
-- `stale` — mappings that could not be relocated (marked stale)
-- `remapped` — mappings that required an LLM call to re-establish
-- `docs_skipped` / `sections_skipped` — skipped because their hashes didn't change
