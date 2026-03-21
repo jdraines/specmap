@@ -5,8 +5,12 @@ This page covers how to set up a development environment, run the test suites, a
 ## Prerequisites
 
 - **Python 3.11+** with [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- **Go 1.25+**
+- **Node.js 20+** with npm
+- **PostgreSQL 15+** (via Docker Compose)
 - **git**
 - [just](https://github.com/casey/just) (recommended -- all commands below have `just` equivalents)
+- [mkcert](https://github.com/FiloSottile/mkcert) (for local HTTPS)
 
 ## Project Structure
 
@@ -14,7 +18,7 @@ This page covers how to set up a development environment, run the test suites, a
 specmap/
 ├── core/                  # Python: core library, MCP server, CLI
 │   ├── src/specmap/       # Source code
-│   │   ├── annotator/     # Diff analysis, annotation engine, diff optimizer
+│   │   ├── indexer/       # Diff analysis, annotation engine, diff optimizer
 │   │   ├── state/         # Models, specmap file I/O
 │   │   ├── llm/           # LLM client, prompts, schemas
 │   │   ├── tools/         # MCP tool implementations
@@ -22,6 +26,23 @@ specmap/
 │   │   └── cli/           # Typer CLI entrypoint + commands
 │   ├── tests/             # Unit tests (pytest)
 │   └── pyproject.toml
+├── api/                   # Go API server (Phase 2)
+│   ├── cmd/api/           # Server entrypoint
+│   ├── internal/
+│   │   ├── config/        # Environment-based configuration
+│   │   ├── models/        # Domain types
+│   │   ├── server/        # HTTP handlers, middleware, routing
+│   │   ├── auth/          # OAuth, JWT, encryption
+│   │   ├── github/        # GitHub API client
+│   │   └── store/         # PostgreSQL access (pgx)
+│   └── migrations/        # SQL migrations
+├── web/                   # React frontend (Phase 2)
+│   ├── src/
+│   │   ├── api/           # TypeScript API client
+│   │   ├── stores/        # Zustand state management
+│   │   ├── components/    # React components
+│   │   └── pages/         # Route pages
+│   └── vite.config.ts
 ├── tests/                 # Functional test suite
 │   ├── conftest.py        # Session fixtures
 │   ├── harness/           # Test infrastructure
@@ -57,7 +78,7 @@ just mcp-test-cov
 
 ### Functional Tests
 
-End-to-end scenarios that exercise real spec-driven workflows: annotating code with spec references, verifying annotations, computing coverage, enforcing thresholds via CLI -- all with deterministic LLM mocks.
+End-to-end scenarios that exercise real spec-driven workflows: annotating code with spec references, verifying annotations, and validating via CLI -- all with deterministic LLM mocks.
 
 ```bash
 just functional-test           # All scenarios (~5s)
@@ -90,14 +111,12 @@ tests/
 │   ├── spec_content.py      # Reusable spec markdown constants
 │   └── code_content.py      # Reusable code file constants
 └── scenarios/
-    ├── test_greenfield.py   # New repo: spec + code -> annotate -> validate -> check
-    ├── test_iterative.py    # Edit code -> re-annotate with incremental diff
-    ├── test_spec_evolution.py  # Edit spec -> annotations regenerated
-    ├── test_branch.py       # Feature branches, cumulative diffs
-    ├── test_coverage.py     # Threshold enforcement, edge cases
-    ├── test_config.py       # Custom patterns, env vars, ignore rules
-    ├── test_errors.py       # Empty repos, missing files, unicode, deep headings
-    └── test_optimization.py # Incremental diff: keep/shift/regenerate classification
+    ├── test_greenfield.py       # New repo: spec + code -> annotate -> validate
+    ├── test_iterative.py        # Edit code -> re-annotate with incremental diff
+    ├── test_cross_component.py  # Cross-component annotation scenarios
+    ├── test_branch.py           # Feature branches, cumulative diffs
+    ├── test_config.py           # Custom patterns, env vars, ignore rules
+    └── test_errors.py           # Empty repos, missing files, unicode, deep headings
 ```
 
 ### LLM Mock Strategy
@@ -131,12 +150,55 @@ def setup_spec_on_main(repo, spec_path, content):
     repo.git_merge("main")
 ```
 
+## Go API Server
+
+### Setup
+
+```bash
+# Start PostgreSQL
+just dev-up
+
+# Create local HTTPS certificates (one time)
+mkcert -install
+mkcert localhost 127.0.0.1 ::1
+
+# Copy .env.example to .env and fill in GitHub OAuth credentials
+cp .env.example .env
+
+# Run the API server
+just api-run
+```
+
+### Tests
+
+```bash
+just api-test     # Run Go tests
+just api-vet      # Go vet
+```
+
+## React Frontend
+
+### Setup
+
+```bash
+just web-install   # Install npm dependencies
+just web-dev       # Start Vite dev server (proxies /api to Go server)
+```
+
+### Type Checking
+
+```bash
+just web-typecheck   # TypeScript type check (no emit)
+```
+
 ## Linting and Formatting
 
 ```bash
-just mcp-lint    # ruff check
-just mcp-fmt     # ruff format
-just lint        # All lints
+just mcp-lint      # ruff check
+just mcp-fmt       # ruff format
+just api-vet       # go vet
+just web-typecheck # tsc --noEmit
+just lint          # All lints
 ```
 
 ## Documentation

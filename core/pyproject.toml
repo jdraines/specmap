@@ -22,6 +22,7 @@ dev = [
 
 [project.scripts]
 specmap = "specmap.cli:app"
+specmap-mcp = "specmap.mcp:main"
 
 [build-system]
 requires = ["hatchling"]

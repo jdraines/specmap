@@ -58,8 +58,13 @@ func run() error {
 	// Graceful shutdown.
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("server starting", "port", cfg.Port, "base_url", cfg.BaseURL)
-		errCh <- httpServer.ListenAndServe()
+		if cfg.TLSCert != "" && cfg.TLSKey != "" {
+			slog.Info("server starting (TLS)", "port", cfg.Port, "base_url", cfg.BaseURL)
+			errCh <- httpServer.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+		} else {
+			slog.Info("server starting", "port", cfg.Port, "base_url", cfg.BaseURL)
+			errCh <- httpServer.ListenAndServe()
+		}
 	}()
 
 	quit := make(chan os.Signal, 1)

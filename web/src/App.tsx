@@ -1,0 +1,39 @@
+import { useEffect } from 'react';
+import { Routes, Route } from 'react-router';
+import { useAuthStore } from './stores/authStore';
+import { AppShell } from './components/layout/AppShell';
+import { LoginPage } from './pages/LoginPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { RepoPage } from './pages/RepoPage';
+import { PRReviewPage } from './pages/PRReviewPage';
+import { LoadingSpinner } from './components/ui/LoadingSpinner';
+
+export default function App() {
+  const { user, loading, fetchUser } = useAuthStore();
+
+  useEffect(() => {
+    fetchUser();
+  }, [fetchUser]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return (
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/:owner/:repo" element={<RepoPage />} />
+        <Route path="/:owner/:repo/pull/:number" element={<PRReviewPage />} />
+      </Routes>
+    </AppShell>
+  );
+}

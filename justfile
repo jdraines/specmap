@@ -62,6 +62,24 @@ dev-up:
 dev-down:
     docker compose down
 
+# --- Web Frontend ---
+
+# Install web dependencies
+web-install:
+    cd web && npm install
+
+# Run web dev server
+web-dev:
+    cd web && npm run dev
+
+# Build web for production
+web-build:
+    cd web && npm run build
+
+# TypeScript type check
+web-typecheck:
+    cd web && npx tsc --noEmit
+
 # --- Documentation ---
 
 # Install docs dependencies
@@ -103,4 +121,4 @@ test: mcp-test api-test
 test-all: mcp-test api-test functional-test
 
 # Run all lints
-lint: mcp-lint api-vet
+lint: mcp-lint api-vet web-typecheck

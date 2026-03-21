@@ -26,13 +26,15 @@ Color output is automatically disabled when stdout is not a terminal (Rich auto-
 
 ## Running
 
+If installed as a tool (`uv tool install`):
+
 ```bash
-cd core
-uv run python -m specmap.cli <command> [flags]
+specmap <command> [flags]
 ```
 
-Or with just:
+Or without installing:
 
 ```bash
-just cli-run <command> [flags]
+uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core' \
+  specmap <command> [flags]
 ```

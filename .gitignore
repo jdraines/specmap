@@ -40,3 +40,5 @@ site/
 
 # Node (web/ phase 2+)
 node_modules/
+web/dist/
+api/web/dist/

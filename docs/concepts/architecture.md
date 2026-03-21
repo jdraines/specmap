@@ -38,14 +38,14 @@ graph TB
 3. **Diff analysis** -- the MCP server runs `git diff` to find changes (full diff on first push, incremental diff on subsequent pushes)
 4. **LLM annotation** -- the server sends the diff and spec files to the LLM, which generates natural-language descriptions with `[N]` spec citations
 5. **Persist** -- annotations are written to `.specmap/{branch}.json` with the current `head_sha`
-6. **CLI validates** -- in CI, the CLI reads the specmap file, computes coverage against the base branch, and enforces a threshold
+6. **CLI validates** -- in CI, the CLI reads the specmap file and validates annotation line ranges
 
 ## Component Responsibilities
 
 | Component | Language | Responsibility | Makes LLM calls? |
 |---|---|---|---|
 | MCP Server | Python | Generate and maintain annotations | Yes |
-| CLI | Python | Validate annotations, enforce coverage | No |
+| CLI | Python | Validate annotations | No |
 | `.specmap/` files | JSON | Store annotations with spec references | -- |
 | Spec documents | Markdown | Source of truth for requirements | -- |
 
@@ -63,33 +63,38 @@ graph TB
 **Deterministic CLI**
 : The CLI makes no network calls and no LLM calls. Its output is fully deterministic given the same inputs, making it reliable for CI.
 
-## Future Architecture (Phase 2+)
+## Phase 2 Architecture (In Progress)
 
 ```mermaid
 graph TB
     subgraph "Developer Workstation"
         Agent[Coding Agent]
         MCP[MCP Server]
+        Vite[Vite Dev Server<br/>:5173]
     end
 
-    subgraph "Specmap Cloud"
+    subgraph "Specmap Server"
         Web[React SPA]
-        API[Go API]
+        API[Go API<br/>:8080]
         DB[(PostgreSQL)]
     end
 
     subgraph "GitHub"
-        GHA[GitHub Action]
+        OAuth[GitHub OAuth]
+        Contents[Contents API]
         PR[Pull Requests]
     end
 
     Agent -->|MCP stdio| MCP
-    MCP -->|API calls| API
+    Vite -->|proxy /api| API
     Web -->|REST| API
     API -->|read/write| DB
-    GHA -->|API calls| API
-    GHA -->|comments| PR
-    API -->|webhooks| PR
+    API -->|OAuth token exchange| OAuth
+    API -->|fetch .specmap/ + specs| Contents
 ```
 
-Phase 2 adds a web UI, Go API server, and PostgreSQL for multi-user collaboration. Phase 3 adds interactive review and comment sync. Phase 4 adds a dedicated GitHub Action. See [Roadmap](../roadmap.md) for details.
+Phase 2 adds a read-only web UI for reviewing PRs with spec annotations. Reviewers log in with GitHub, browse repos and PRs, and see diffs with annotation widgets inline. Clicking a `[N]` citation opens the spec content in a side panel.
+
+The Go API server fetches `.specmap/{branch}.json` from the repo via the GitHub Contents API and caches the result in PostgreSQL. Spec file content is fetched on demand when a reviewer opens a citation.
+
+See [Roadmap](../roadmap.md) for the full phased delivery plan.

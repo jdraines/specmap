@@ -5,12 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/specmap/specmap/api/internal/github"
 	"github.com/specmap/specmap/api/internal/models"
 )
 
 // handleListPulls lists open pull requests for a repository.
-// Fetches from GitHub, upserts in DB, returns cached data.
 func (s *Server) handleListPulls(w http.ResponseWriter, r *http.Request) {
 	owner := r.PathValue("owner")
 	repo := r.PathValue("repo")
@@ -23,7 +21,7 @@ func (s *Server) handleListPulls(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ensure repo exists in DB.
-	ghRepo, err := github.GetRepo(r.Context(), token, owner, repo)
+	ghRepo, err := s.gh.GetRepo(r.Context(), token, owner, repo)
 	if err != nil {
 		slog.Error("fetching repo", "error", err)
 		writeError(w, http.StatusNotFound, "repository not found")
@@ -44,7 +42,7 @@ func (s *Server) handleListPulls(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch PRs from GitHub.
-	ghPulls, err := github.ListPulls(r.Context(), token, owner, repo)
+	ghPulls, err := s.gh.ListPulls(r.Context(), token, owner, repo)
 	if err != nil {
 		slog.Error("listing GitHub pulls", "error", err)
 		writeError(w, http.StatusBadGateway, "failed to fetch pull requests from GitHub")
@@ -94,16 +92,14 @@ func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch from GitHub.
-	ghPull, err := github.GetPull(r.Context(), token, owner, repo, number)
+	ghPull, err := s.gh.GetPull(r.Context(), token, owner, repo, number)
 	if err != nil {
 		slog.Error("fetching GitHub pull", "error", err)
 		writeError(w, http.StatusNotFound, "pull request not found")
 		return
 	}
 
-	// Ensure repo exists.
-	ghRepo, err := github.GetRepo(r.Context(), token, owner, repo)
+	ghRepo, err := s.gh.GetRepo(r.Context(), token, owner, repo)
 	if err != nil {
 		slog.Error("fetching repo", "error", err)
 		writeError(w, http.StatusNotFound, "repository not found")
@@ -123,7 +119,6 @@ func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upsert PR.
 	pr := &models.PullRequest{
 		RepositoryID: repoModel.ID,
 		Number:       ghPull.Number,
@@ -163,7 +158,7 @@ func (s *Server) handleGetPullFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files, err := github.ListPullFiles(r.Context(), token, owner, repo, number)
+	files, err := s.gh.ListPullFiles(r.Context(), token, owner, repo, number)
 	if err != nil {
 		slog.Error("listing pull files", "error", err)
 		writeError(w, http.StatusBadGateway, "failed to fetch pull request files")

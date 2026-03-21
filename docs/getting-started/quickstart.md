@@ -1,8 +1,18 @@
 # Quick Start
 
-This walkthrough takes you from zero to a validated spec-annotated codebase in four steps.
+This walkthrough takes you from zero to a validated spec-annotated codebase in four steps. This all happens in **your project's repo**, not in the specmap repo.
 
-## Step 1: Write a Spec
+## Step 1: Install Specmap
+
+```bash
+uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
+```
+
+This gives you two commands: `specmap` (CLI) and `specmap-mcp` (MCP server).
+
+See [Installation](installation.md) for alternative install methods.
+
+## Step 2: Write a Spec
 
 Create a markdown spec file in your repo. Specmap auto-discovers `**/*.md` files (excluding `README.md`, `CHANGELOG.md`, and similar).
 
@@ -21,26 +31,33 @@ All passwords are hashed with bcrypt (cost factor 12)
 before storage. Plain-text passwords are never persisted.
 ```
 
-## Step 2: Set Your API Key
-
-Specmap needs an LLM to generate annotations that link your code to spec intent. Set your API key:
-
-```bash
-export SPECMAP_API_KEY="sk-..."
-```
-
-By default, Specmap uses `gpt-4o-mini`. See [Configuration](configuration.md) to use a different model or provider.
-
 ## Step 3: Code with Your Agent
 
-Start coding with your MCP-connected agent. As it writes code, it calls `specmap_annotate` automatically to create annotations linking your code changes to spec requirements.
+Set your LLM API key and add the MCP server to your coding agent. In your project's `.mcp.json`:
 
-Example: the agent implements the token storage described in your spec. Behind the scenes, the MCP server:
+```json
+{
+  "mcpServers": {
+    "specmap": {
+      "command": "specmap-mcp",
+      "env": {
+        "SPECMAP_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+Start coding on a feature branch. As your agent writes code, it calls `specmap_annotate` automatically to create annotations linking code changes to spec requirements.
+
+Behind the scenes, the MCP server:
 
 1. Runs `git diff` to find changed code
 2. Reads the spec files in the repo
 3. Sends the diff and specs to the LLM, which generates annotations with `[N]` spec citations
 4. Writes annotations to `.specmap/{branch}.json`
+
+By default, Specmap uses `gpt-4o-mini`. See [Configuration](configuration.md) to use a different model or provider.
 
 ## Step 4: Check Status
 
@@ -79,4 +96,4 @@ specmap validate
 Validation: 3/3 passed
 ```
 
-For CI integration, see [CI Integration](../cli/ci.md).
+Commit the `.specmap/` directory with your code and push. For CI integration, see [CI Integration](../cli/ci.md).
