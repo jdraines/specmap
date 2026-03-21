@@ -1,8 +1,8 @@
 site_name: Specmap
 site_description: Map AI-generated code changes back to spec intent
 site_url: https://specmap.dev
-repo_url: https://github.com/specmap/specmap
-repo_name: specmap/specmap
+repo_url: https://github.com/jdraines/specmap
+repo_name: jdraines/specmap
 
 theme:
   name: material
@@ -62,6 +62,7 @@ nav:
       - Installation: getting-started/installation.md
       - Quick Start: getting-started/quickstart.md
       - Configuration: getting-started/configuration.md
+      - Local Development: getting-started/local-dev.md
   - MCP Server:
       - Overview: mcp/overview.md
       - Tools Reference: mcp/tools.md
@@ -74,6 +75,6 @@ nav:
       - Architecture: concepts/architecture.md
       - Specmap Format: concepts/format.md
       - Hashing & Reindexing: concepts/hashing.md
-      - Coverage: concepts/coverage.md
+      - Annotations: concepts/coverage.md
   - Development: development.md
   - Roadmap: roadmap.md

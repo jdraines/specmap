@@ -8,23 +8,23 @@ Specmap is delivered in four phases, each building on the previous.
 
 The foundation: a local-only workflow with no infrastructure dependencies.
 
-- **MCP server** (Python) -- 3 tools for annotating code, checking validity, and finding coverage gaps
-- **CLI** (Python) -- `validate`, `status`, `check` commands for CI enforcement
+- **MCP server** (Python) -- 2 tools for annotating code and checking validity
+- **CLI** (Python) -- `validate` and `status` commands for CI enforcement
 - **Specmap format v2** -- `.specmap/{branch}.json` with annotations, spec references, and `head_sha` for incremental optimization
 - **BYOK** -- any LLM provider via litellm
 - **Diff-based optimization** -- first push annotates all changes; subsequent pushes use incremental diffs to keep/shift/regenerate annotations
 
 ## Phase 2 -- Web UI + GitHub OAuth
 
-**Status: Planned**
+**Status: In Progress**
 
-Multi-user collaboration with a web interface.
+A read-only web interface for reviewing PRs with spec annotations.
 
-- **React SPA** -- browse specs, annotations, and coverage visually
-- **Go API server** -- REST API backed by PostgreSQL
-- **GitHub OAuth** -- authenticate with GitHub, auto-discover repos
-- **Annotation storage** -- transition from local JSON to server-side storage
-- **Spec browser** -- navigate spec documents with inline coverage indicators
+- **React SPA** -- browse repos, PRs, and diffs with annotation widgets inline; click `[N]` citations to open spec content in a side panel
+- **Go API server** -- REST API backed by PostgreSQL; GitHub OAuth login, JWT sessions, encrypted token storage
+- **GitHub Contents API** -- fetches `.specmap/{branch}.json` and spec files from the repo at the PR's head SHA
+- **Mapping cache** -- server-side cache of specmap data keyed by PR + head SHA
+- **Local HTTPS** -- development uses `mkcert` for locally-trusted certificates; session cookies stay `Secure: true` always
 
 ## Phase 3 -- Interactive Review + Comment Sync
 

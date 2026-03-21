@@ -7,23 +7,49 @@
 - **uv** -- recommended Python package manager ([install](https://docs.astral.sh/uv/getting-started/installation/))
 - An **MCP-capable coding agent** (e.g., Claude Code)
 
-## Install
+## Install the CLI
+
+The simplest way to install is as a global tool via `uv`:
 
 ```bash
-cd core
-uv sync
+uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
 ```
 
-This installs all dependencies (core library, MCP server, CLI) into a managed virtual environment.
-
-## Using just
-
-If you have [just](https://github.com/casey/just) installed, the project provides shortcuts:
+This makes the `specmap` command available everywhere:
 
 ```bash
-just mcp-install   # Install all Python dependencies
-just cli-run       # Run the CLI
+specmap status
+specmap validate
 ```
+
+### Alternative: run without installing
+
+Use `uvx` to run specmap commands without a permanent install:
+
+```bash
+uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core' specmap status
+```
+
+### Alternative: add as a Python project dependency
+
+If your project uses Python, add specmap to your dependencies:
+
+=== "pyproject.toml"
+
+    ```toml
+    [project]
+    dependencies = [
+        "specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core",
+    ]
+    ```
+
+=== "requirements.txt"
+
+    ```
+    specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core
+    ```
+
+Then `specmap` is available in your project's virtualenv.
 
 ## Add the MCP Server to Your Coding Agent
 
@@ -35,8 +61,26 @@ Create or edit `.mcp.json` in your project root:
 {
   "mcpServers": {
     "specmap": {
-      "command": "uv",
-      "args": ["run", "--directory", "./core", "python", "-m", "specmap.mcp"],
+      "command": "uvx",
+      "args": [
+        "--from", "specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core",
+        "python", "-m", "specmap.mcp"
+      ],
+      "env": {
+        "SPECMAP_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+If you installed specmap as a `uv tool`, you can use the simpler form:
+
+```json
+{
+  "mcpServers": {
+    "specmap": {
+      "command": "specmap-mcp",
       "env": {
         "SPECMAP_API_KEY": "your-api-key-here"
       }
@@ -50,16 +94,16 @@ Create or edit `.mcp.json` in your project root:
 
 ### Other MCP Clients
 
-Specmap uses the standard MCP stdio transport. Any client that supports stdio-based MCP servers can connect using:
+Specmap uses the standard MCP stdio transport. Any client that supports stdio-based MCP servers can connect. The server is started by running the `specmap.mcp` module:
 
 ```bash
-uv run --directory ./core python -m specmap.mcp
+uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core' python -m specmap.mcp
 ```
 
 ## Verify Installation
 
-Run the tests to confirm everything works:
-
 ```bash
-just mcp-test
+specmap --help
 ```
+
+You should see the available commands (`validate`, `status`) and global flags.

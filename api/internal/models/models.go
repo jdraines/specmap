@@ -40,7 +40,7 @@ type Repository struct {
 // PullRequest is cached PR metadata.
 type PullRequest struct {
 	ID           int64     `json:"id"`
-	RepositoryID int64    `json:"repository_id"`
+	RepositoryID int64     `json:"repository_id"`
 	Number       int       `json:"number"`
 	Title        string    `json:"title"`
 	State        string    `json:"state"` // open, closed, merged
@@ -48,19 +48,17 @@ type PullRequest struct {
 	BaseBranch   string    `json:"base_branch"`
 	HeadSHA      string    `json:"head_sha"`
 	AuthorLogin  string    `json:"author_login"`
-	SpecCoverage *float64  `json:"spec_coverage"` // nullable
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // MappingCache caches .specmap/ data keyed by PR + head SHA.
 type MappingCache struct {
-	ID              int64     `json:"id"`
-	PullRequestID   int64    `json:"pull_request_id"`
-	HeadSHA         string    `json:"head_sha"`
-	SpecmapJSON     []byte    `json:"-"` // raw JSON content
-	SpecCoverage    *float64  `json:"spec_coverage"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	PullRequestID int64    `json:"pull_request_id"`
+	HeadSHA       string    `json:"head_sha"`
+	SpecmapJSON   []byte    `json:"-"` // raw JSON content
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // Session represents a user's authenticated session (stored as JWT claims, not in DB).

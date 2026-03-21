@@ -41,8 +41,8 @@ This is a greenfield project targeting startup viability. Phase 1 (MCP server + 
 │                           └───────┬───────────────┘  │
 │   ┌──────────┐                    │                  │
 │   │ specmap  │  Typer CLI         │                  │
-│   │ check/   │◄───────────────────┘                  │
-│   │ validate │                                       │
+│   │ validate/│◄───────────────────┘                  │
+│   │ status   │                                       │
 │   └──────────┘            ┌───────────────┐          │
 │                           │ .specmap/     │          │
 │                           │ branch.json   │          │
@@ -96,46 +96,60 @@ specmap/
 │   │           └── status.py         # Human-readable annotation summary
 │   └── tests/                        # Unit tests (pytest)
 │
-├── api/                              # Go API server (Phase 2+)
+├── api/                              # Go API server (Phase 2)
 │   ├── go.mod
-│   ├── cmd/api/main.go
+│   ├── cmd/api/main.go               # Server entrypoint
+│   ├── migrations/                   # SQL migration files (embedded)
+│   │   ├── 001_initial.up.sql        # Users, tokens, repos, PRs, mapping_cache
+│   │   └── 002_drop_spec_coverage.up.sql
 │   └── internal/
-│       ├── config/                   # Env-based config
-│       ├── server/                   # HTTP setup, middleware, routes
-│       ├── auth/                     # OAuth flow, JWT sessions
-│       ├── github/                   # GitHub API client, webhooks, App management
-│       ├── handlers/                 # auth, pulls, specs, comments, coverage, ws
-│       ├── models/                   # User, Team, Installation, PR, Comment, Annotation
-│       ├── store/                    # Postgres access layer + migrations
-│       ├── ws/                       # WebSocket hub, rooms, typed messages
-│       └── sync/                     # Bidirectional comment sync, annotation cache refresh
+│       ├── config/config.go          # Env-based config (port, DB, OAuth, CORS, TLS)
+│       ├── models/models.go          # Domain types (mirrors Python SpecmapFile v2)
+│       ├── server/
+│       │   ├── server.go             # Route registration, CORS, handler wiring
+│       │   ├── middleware.go         # JWT auth, request logging, CORS
+│       │   ├── helpers.go            # Token decryption, JSON response helpers
+│       │   ├── github.go             # GitHubAPI interface (for test mocking)
+│       │   ├── spa.go                # SPA static file handler with index.html fallback
+│       │   ├── handlers_auth.go      # Login, callback, logout, me
+│       │   ├── handlers_repos.go     # List/get repos (fetch from GitHub, upsert in DB)
+│       │   ├── handlers_pulls.go     # List/get PRs, list PR files
+│       │   ├── handlers_annotations.go # GET annotations (cache or fetch .specmap/ from GitHub)
+│       │   └── handlers_specs.go     # GET spec content (fetch from GitHub at head SHA)
+│       ├── auth/
+│       │   ├── oauth.go              # OAuth state/session cookies
+│       │   ├── jwt.go                # JWT creation/validation (1hr expiry)
+│       │   └── crypto.go             # AES-256-GCM encryption/decryption
+│       ├── github/
+│       │   ├── client.go             # OAuth token exchange, user profile
+│       │   ├── repos.go              # ListRepos, GetRepo
+│       │   ├── pulls.go              # ListPulls, GetPull, ListPullFiles
+│       │   └── contents.go           # GetFileContent (Contents API, base64 decode)
+│       └── store/
+│           ├── store.go              # pgx pool, migration runner
+│           ├── users.go              # UpsertUser, GetUserByID, UpsertToken, GetToken
+│           ├── repos.go              # UpsertRepo, GetRepoByFullName
+│           ├── pulls.go              # UpsertPull, ListPullsByRepo, GetPull
+│           └── mapping_cache.go      # GetMappingCache, UpsertMappingCache
 │
-├── web/                              # React frontend (Phase 2+)
-│   ├── vite.config.ts
+├── web/                              # React frontend (Phase 2)
+│   ├── vite.config.ts                # Vite + React + Tailwind, proxy /api to Go server
+│   ├── index.html
 │   └── src/
-│       ├── api/                      # Typed fetch wrappers
-│       ├── hooks/                    # useWebSocket, useAuth, usePullRequest, useAnnotations
+│       ├── api/                      # TypeScript API client
+│       │   ├── types.ts              # Interfaces mirroring Go models
+│       │   ├── client.ts             # Fetch wrapper (credentials, 401 redirect)
+│       │   └── endpoints.ts          # Typed functions for each API endpoint
+│       ├── stores/                   # Zustand state management
+│       │   ├── authStore.ts          # User session state
+│       │   ├── reviewStore.ts        # PR + files + annotations state
+│       │   └── specPanelStore.ts     # Spec side panel state
 │       ├── components/
-│       │   ├── diff/                 # DiffViewer, DiffFile, DiffLine, DiffGutter
-│       │   ├── spec/                 # SpecPanel, SpecBadge, CoverageBar
-│       │   ├── comments/             # CommentThread, CommentForm, CommentList
-│       │   └── pr/                   # PRList, PRDetail, PRHeader
-│       ├── pages/                    # Login, Dashboard, PRReview, Settings
-│       └── stores/                   # Zustand (authStore, reviewStore)
-│
-├── action/                           # GitHub Action (Phase 4)
-│
-├── infra/                            # Terraform
-│   ├── modules/
-│   │   ├── networking/               # VPC, subnets, security groups
-│   │   ├── ecs/                      # Fargate task defs + service
-│   │   ├── lambda/                   # Python LLM service
-│   │   ├── rds/                      # PostgreSQL
-│   │   ├── cdn/                      # S3 + CloudFront
-│   │   └── secrets/                  # AWS Secrets Manager
-│   └── environments/
-│       ├── dev/
-│       └── prod/
+│       │   ├── layout/               # AppShell, Header
+│       │   ├── diff/                 # DiffViewer, DiffFile, FileHeader, AnnotationWidget, SpecBadge
+│       │   ├── spec/                 # SpecPanel, SpecContent (markdown rendering)
+│       │   └── ui/                   # LoadingSpinner, ErrorBoundary, Breadcrumb
+│       └── pages/                    # LoginPage, DashboardPage, RepoPage, PRReviewPage
 │
 ├── tests/                            # Functional test suite
 │   ├── conftest.py                   # Session fixtures
@@ -236,40 +250,32 @@ Verify existing annotations are still valid.
 
 ---
 
-## PostgreSQL Schema (Phase 2+)
+## PostgreSQL Schema (Phase 2)
 
-**Core tables:**
+**Implemented tables:**
 - `users` -- specmap identity (linked via `github_id`)
 - `user_tokens` -- OAuth tokens, AES-256-GCM encrypted at application level
-- `teams` -- specmap's own org concept
-- `team_members` -- role-based (owner/admin/member)
-- `installations` -- GitHub App installations, linked to teams
-- `repositories` -- repos via installations
-- `pull_requests` -- cached PR metadata + `spec_coverage` (float)
-- `comments` -- with `sync_status` (pending/synced/failed/conflict), `sync_direction`
-- `webhook_events` -- raw payload log for debugging/replay
-- `annotation_cache` -- server-side cache of `.specmap/` data keyed by PR + head_sha
+- `repositories` -- GitHub repos the user has access to
+- `pull_requests` -- cached PR metadata (repo, number, title, state, branches, head SHA)
+- `mapping_cache` -- server-side cache of `.specmap/` data (JSONB) keyed by PR + head SHA
 
 ---
 
-## API Design (Phase 2+)
+## API Design (Phase 2)
 
-**REST endpoints (Go, `/api/v1`):**
+**Implemented REST endpoints (Go, `/api/v1`):**
 
-| Group | Endpoints |
-|-------|-----------|
-| Auth | `GET /auth/login` -> GitHub redirect, `GET /auth/callback`, `POST /auth/logout`, `GET /auth/me` |
-| Repos | `GET /repos`, `GET /repos/{owner}/{repo}` |
-| PRs | `GET /repos/{owner}/{repo}/pulls`, `GET .../pulls/{n}`, `GET .../pulls/{n}/diff`, `GET .../pulls/{n}/annotations`, `GET .../pulls/{n}/coverage` |
-| Comments | `GET/POST/PATCH/DELETE .../pulls/{n}/comments[/{id}]` |
-| Specs | `GET .../pulls/{n}/specs`, `GET .../pulls/{n}/specs/{path}` (fetches content at head_sha) |
-| Teams | `GET/POST /teams`, `GET /teams/{slug}`, `POST/DELETE .../members` |
-| Webhooks | `POST /webhooks/github` (signature-verified, no auth) |
+| Group | Endpoints | Auth |
+|-------|-----------|------|
+| Health | `GET /healthz` | No |
+| Auth | `GET /auth/login` (GitHub redirect), `GET /auth/callback` | No |
+| Auth | `POST /auth/logout`, `GET /auth/me` | JWT |
+| Repos | `GET /repos`, `GET /repos/{owner}/{repo}` | JWT |
+| PRs | `GET /repos/{owner}/{repo}/pulls`, `GET .../pulls/{n}`, `GET .../pulls/{n}/files` | JWT |
+| Annotations | `GET .../pulls/{n}/annotations` (fetch/cache .specmap/ from GitHub) | JWT |
+| Specs | `GET .../pulls/{n}/specs/{path...}` (fetch spec content at head SHA) | JWT |
 
-**WebSocket protocol (`GET /api/v1/ws?token={jwt}`):**
-- Client subscribes: `{"type": "subscribe", "channel": "pr:owner/repo:42"}`
-- Server pushes: `comment.created`, `comment.updated`, `comment.deleted`, `annotations.updated`, `pr.force_pushed`
-- Keepalive: `ping`/`pong`
+**Annotations flow:** get user token -> fetch PR from GitHub (get head_sha, head_branch) -> upsert repo+PR -> check mapping_cache -> on miss, fetch `.specmap/{head_branch}.json` via Contents API at ref=head_sha -> parse -> cache -> return. If `.specmap/` file doesn't exist (404), return empty annotations.
 
 ---
 
@@ -281,7 +287,7 @@ Verify existing annotations are still valid.
 | Go WebSocket | `nhooyr.io/websocket` | Modern, context-aware, lighter than gorilla |
 | Go DB driver | `jackc/pgx/v5` | High-performance Postgres, native types, pooling |
 | Go migrations | `golang-migrate/migrate` + embedded SQL | Simple, file-based |
-| Go GitHub client | `google/go-github/v60` | Well-maintained, typed |
+| Go GitHub client | Raw `net/http` | Minimal deps, only a few endpoints needed |
 | Python CLI | `typer` (Typer >= 0.12, bundles Rich) | Click-based, auto-generates help, Rich output |
 | Python MCP | `modelcontextprotocol/python-sdk` | Official SDK |
 | Python LLM | `litellm` | BYOK across 100+ providers |
@@ -348,8 +354,13 @@ A developer adds the MCP server to their coding agent, annotations are generated
 13. `core/src/specmap/mcp/server.py` -- MCP server registration (2 tools)
 14. `core/src/specmap/cli/` -- Typer CLI (validate, status commands)
 
-### Phase 2: Web UI (read-only) + GitHub OAuth
-Go API server, React diff viewer with spec panel, GitHub OAuth login. Reviewers can see diffs with spec annotations and coverage.
+### Phase 2: Web UI (read-only) + GitHub OAuth -- IN PROGRESS
+Go API server with GitHub OAuth, JWT sessions, encrypted token storage, PostgreSQL schema, and GitHub API integration for repos/PRs/files. React SPA with Vite + Tailwind: dashboard, repo page, PR review page with diff viewer + annotation widgets + spec side panel. Reviewer logs in with GitHub, selects a repo and PR, and sees the diff with specmap annotations inline. Clicking a `[N]` citation opens the spec content in a side panel.
+
+**Implemented:**
+- Go API: OAuth login, JWT sessions, encrypted token storage, Postgres schema, repo/PR/files endpoints, annotations endpoint (fetch/cache .specmap/ from GitHub), spec content endpoint, CORS middleware, TLS support
+- React: Vite scaffold, Tailwind CSS, API client layer, Zustand stores (auth, review, spec panel), router, pages (login, dashboard, repo, PR review), diff viewer (react-diff-view + gitdiff-parser), annotation widgets with [N] citation badges, spec panel with markdown rendering
+- Build: justfile commands for web-install, web-dev, web-build, web-typecheck; lint includes tsc
 
 ### Phase 3: Interactive review
 Bidirectional comment sync, approvals, GitHub App webhooks, WebSocket real-time updates.
@@ -368,8 +379,8 @@ LLM-generated specs for unmapped code, GitHub Action for CI coverage gates, adva
 - **CI commands**: `just test` (unit), `just test-all` (unit + functional), `just lint` (ruff)
 - **Manual E2E**: Configure MCP server in Claude Code, run a coding session, verify `.specmap/` file is created correctly, run `specmap validate`
 
-### Phase 2+ testing:
-- Go API: handler tests with `httptest`, store tests with `testcontainers-go` (Postgres)
-- React: component tests with Vitest + Testing Library
-- E2E: Playwright for login -> view PR -> post comment flow (Phase 3)
-- CI pipeline: `uv run pytest --cov`, linters
+### Phase 2 testing (IN PROGRESS):
+- Go API: handler tests with `httptest` and mock `GitHubAPI` interface (`just api-test`)
+- TypeScript: type checking via `npx tsc --noEmit` (`just web-typecheck`)
+- Combined: `just lint` runs ruff + go vet + tsc
+- CI pipeline: `just test` (Python unit + Go), `just lint` (all linters)

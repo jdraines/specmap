@@ -4,12 +4,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/specmap/specmap/api/internal/github"
 	"github.com/specmap/specmap/api/internal/models"
 )
 
 // handleListRepos lists repositories the authenticated user has access to.
-// Fetches from GitHub API using the user's OAuth token, caches in DB.
 func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) {
 	token, err := s.getUserToken(r.Context())
 	if err != nil {
@@ -18,14 +16,13 @@ func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ghRepos, err := github.ListRepos(r.Context(), token)
+	ghRepos, err := s.gh.ListRepos(r.Context(), token)
 	if err != nil {
 		slog.Error("listing GitHub repos", "error", err)
 		writeError(w, http.StatusBadGateway, "failed to fetch repos from GitHub")
 		return
 	}
 
-	// Upsert each repo in DB and build response.
 	repos := make([]models.Repository, 0, len(ghRepos))
 	for _, gr := range ghRepos {
 		repo := &models.Repository{
@@ -58,14 +55,13 @@ func (s *Server) handleGetRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ghRepo, err := github.GetRepo(r.Context(), token, owner, repo)
+	ghRepo, err := s.gh.GetRepo(r.Context(), token, owner, repo)
 	if err != nil {
 		slog.Error("fetching GitHub repo", "owner", owner, "repo", repo, "error", err)
 		writeError(w, http.StatusNotFound, "repository not found")
 		return
 	}
 
-	// Upsert in DB.
 	repoModel := &models.Repository{
 		GitHubID: ghRepo.ID,
 		Owner:    ghRepo.Owner.Login,

@@ -14,6 +14,7 @@ type Server struct {
 	cfg   *config.Config
 	store *store.Store
 	oauth *auth.OAuthConfig
+	gh    GitHubAPI
 	mux   *http.ServeMux
 }
 
@@ -27,6 +28,7 @@ func New(cfg *config.Config, st *store.Store) *Server {
 			ClientSecret: cfg.GitHubClientSecret,
 			BaseURL:      cfg.BaseURL,
 		},
+		gh:  realGitHub{},
 		mux: http.NewServeMux(),
 	}
 	s.routes()
@@ -35,7 +37,12 @@ func New(cfg *config.Config, st *store.Store) *Server {
 
 // Handler returns the server's top-level HTTP handler with middleware.
 func (s *Server) Handler() http.Handler {
-	return logging(s.mux)
+	var h http.Handler = s.mux
+	if s.cfg.CORSOrigin != "" {
+		h = cors(s.cfg.CORSOrigin)(h)
+	}
+	h = logging(h)
+	return h
 }
 
 func (s *Server) routes() {
@@ -62,4 +69,10 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/v1/repos/{owner}/{repo}/pulls", authed(http.HandlerFunc(s.handleListPulls)))
 	s.mux.Handle("GET /api/v1/repos/{owner}/{repo}/pulls/{number}", authed(http.HandlerFunc(s.handleGetPull)))
 	s.mux.Handle("GET /api/v1/repos/{owner}/{repo}/pulls/{number}/files", authed(http.HandlerFunc(s.handleGetPullFiles)))
+
+	// Annotations (require session).
+	s.mux.Handle("GET /api/v1/repos/{owner}/{repo}/pulls/{number}/annotations", authed(http.HandlerFunc(s.handleGetAnnotations)))
+
+	// Spec content (require session).
+	s.mux.Handle("GET /api/v1/repos/{owner}/{repo}/pulls/{number}/specs/{path...}", authed(http.HandlerFunc(s.handleGetSpecContent)))
 }

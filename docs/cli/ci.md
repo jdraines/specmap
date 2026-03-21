@@ -21,14 +21,10 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
-      - name: Install dependencies
-        run: cd core && uv sync
-
       - name: Validate annotations
         run: |
-          cd core && uv run python -m specmap.cli \
-            --no-color \
-            validate
+          uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core' \
+            specmap --no-color validate
 ```
 
 ## Key Flags for CI

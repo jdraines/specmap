@@ -6,7 +6,7 @@ Specmap solves a fundamental problem with AI-assisted development: when an agent
 
 ## How It Works
 
-The **MCP server** integrates with your coding agent (e.g., Claude Code) to automatically annotate code changes with spec references as you work. The **CLI** validates those annotations in CI, enforcing a coverage threshold to ensure nothing slips through unreviewed.
+The **MCP server** integrates with your coding agent (e.g., Claude Code) to automatically annotate code changes with spec references as you work. The **CLI** validates those annotations in CI. The **web UI** lets reviewers browse PRs with spec annotations overlaid on diffs.
 
 ```mermaid
 graph LR
@@ -20,7 +20,6 @@ graph LR
 ## Key Concepts
 
 - **Annotations** -- LLM-generated natural-language descriptions of code regions, with `[N]` inline citations referencing specific spec locations
-- **Coverage** -- the percentage of changed lines (vs. base branch) that have annotations with spec references
 - **Diff-based optimization** -- first push annotates all changes; subsequent pushes use incremental diffs to keep, shift, or regenerate annotations
 - **BYOK** -- bring your own key; the MCP server calls your preferred LLM provider via litellm
 

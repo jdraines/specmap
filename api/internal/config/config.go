@@ -11,7 +11,7 @@ import (
 type Config struct {
 	// Server
 	Port    int
-	BaseURL string // e.g. "http://localhost:8080" — used for OAuth callback
+	BaseURL string // e.g. "https://localhost:8080" — used for OAuth callback
 
 	// Database
 	DatabaseURL string
@@ -25,6 +25,13 @@ type Config struct {
 
 	// Encryption
 	EncryptionKey string // 32-byte hex key for AES-256-GCM token encryption
+
+	// CORS
+	CORSOrigin string // allowed origin for CORS (e.g. "http://localhost:5173")
+
+	// TLS (local dev with mkcert)
+	TLSCert string // path to TLS certificate file
+	TLSKey  string // path to TLS private key file
 }
 
 // Load reads configuration from environment variables.
@@ -56,6 +63,9 @@ func Load() (*Config, error) {
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		SessionSecret:      os.Getenv("SESSION_SECRET"),
 		EncryptionKey:      os.Getenv("ENCRYPTION_KEY"),
+		CORSOrigin:         os.Getenv("CORS_ORIGIN"),
+		TLSCert:            os.Getenv("TLS_CERT"),
+		TLSKey:             os.Getenv("TLS_KEY"),
 	}
 
 	return cfg, nil
