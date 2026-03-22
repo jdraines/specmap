@@ -95,28 +95,25 @@ class CodeAnalyzer:
         return changes
 
     def get_changed_files(self, repo_root: str, base_branch: str) -> list[CodeChange]:
-        """Run git diff base_branch...HEAD and parse the result."""
+        """Run git diff against base_branch and parse the result.
+
+        Uses `git diff base_branch` (not `base_branch...HEAD`) so that staged
+        and unstaged working-tree changes are included. This matters because
+        the developer may call specmap_annotate before committing.
+        """
         try:
             result = subprocess.run(
-                ["git", "diff", f"{base_branch}...HEAD"],
+                ["git", "diff", base_branch],
                 cwd=repo_root,
                 capture_output=True,
                 text=True,
             )
             if result.returncode != 0:
-                # Try without the three-dot form
-                result = subprocess.run(
-                    ["git", "diff", base_branch],
-                    cwd=repo_root,
-                    capture_output=True,
-                    text=True,
+                print(
+                    f"[specmap] Warning: git diff failed: {result.stderr}",
+                    file=sys.stderr,
                 )
-                if result.returncode != 0:
-                    print(
-                        f"[specmap] Warning: git diff failed: {result.stderr}",
-                        file=sys.stderr,
-                    )
-                    return []
+                return []
         except FileNotFoundError:
             print("[specmap] Warning: git not found", file=sys.stderr)
             return []
