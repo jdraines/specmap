@@ -45,6 +45,7 @@ class SpecmapConfig:
     api_base: str | None = None
     spec_patterns: list[str] = field(default_factory=lambda: list(_DEFAULT_SPEC_PATTERNS))
     ignore_patterns: list[str] = field(default_factory=lambda: list(_DEFAULT_IGNORE_PATTERNS))
+    base_branch: str | None = None
     repo_root: str | None = None
 
     @classmethod
@@ -75,6 +76,8 @@ class SpecmapConfig:
             config.spec_patterns = [p.strip() for p in env_patterns.split(",") if p.strip()]
         if env_ignore := os.environ.get("SPECMAP_IGNORE_PATTERNS"):
             config.ignore_patterns = [p.strip() for p in env_ignore.split(",") if p.strip()]
+        if env_base_branch := os.environ.get("SPECMAP_BASE_BRANCH"):
+            config.base_branch = env_base_branch
 
         return config
 
@@ -110,6 +113,8 @@ def _load_config_file(config: SpecmapConfig, config_path: Path) -> None:
     if ignore_patterns := data.get("ignore_patterns"):
         if isinstance(ignore_patterns, list):
             config.ignore_patterns = ignore_patterns
+    if base_branch := data.get("base_branch"):
+        config.base_branch = base_branch
 
 
 def _warn_if_tracked(config_path: Path, repo_root: str) -> None:

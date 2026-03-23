@@ -32,8 +32,30 @@ class SpecmapFileManager:
             pass
         return "unknown"
 
-    def get_base_branch(self) -> str:
-        """Detect the base branch (default: main, fallback: master)."""
+    def get_base_branch(self, configured: str | None = None) -> str:
+        """Detect the base branch (default: main, fallback: master).
+
+        If *configured* is set, verify it exists as a git ref and return it.
+        Falls back to auto-detect if the configured ref doesn't exist.
+        """
+        if configured:
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--verify", configured],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    return configured
+            except FileNotFoundError:
+                pass
+            print(
+                f"[specmap] Warning: configured base_branch '{configured}' "
+                f"not found as a git ref, falling back to auto-detect",
+                file=sys.stderr,
+            )
+
         for candidate in ("main", "master"):
             try:
                 result = subprocess.run(
