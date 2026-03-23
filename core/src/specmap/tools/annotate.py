@@ -14,7 +14,7 @@ from specmap.indexer.diff_optimizer import (
     reclassify_for_spec_changes,
     shift_annotations,
 )
-from specmap.indexer.hasher import hash_content
+from specmap.indexer.hasher import hash_code, hash_content
 from specmap.indexer.mapper import Mapper
 from specmap.llm.client import LLMClient
 from specmap.state.specmap_file import SpecmapFileManager
@@ -48,7 +48,7 @@ async def annotate(
         branch = file_mgr.get_branch()
     specmap = file_mgr.load(branch)
     specmap.branch = branch
-    specmap.base_branch = file_mgr.get_base_branch()
+    specmap.base_branch = file_mgr.get_base_branch(config.base_branch)
     specmap.ignore_patterns = config.ignore_patterns
 
     # 2. Auto-discover spec files if not provided
@@ -127,8 +127,9 @@ async def annotate(
     created = len(new_annotations)
     updated = min(removed, created)
 
-    # 8. Update head_sha and save
+    # 8. Update head_sha, file hashes, and save
     specmap.head_sha = current_head
+    specmap.file_hashes = _compute_file_hashes(repo_root, specmap.annotations)
     file_mgr.save(specmap)
 
     # 9. Return summary
@@ -167,17 +168,78 @@ async def _incremental_annotate(
     file_hunks = parse_incremental_diff(diff_text)
 
     if not file_hunks:
-        # No changes since last annotation
+        # No new commits — check if working-tree files changed via hashes
+        dirty_files = _find_dirty_files(repo_root, specmap)
+        if not dirty_files:
+            # Truly no changes
+            specmap.head_sha = current_head
+            file_mgr.save(specmap)
+            return {
+                "status": "ok",
+                "annotations_created": 0,
+                "annotations_updated": 0,
+                "total_annotations": len(specmap.annotations),
+                "spec_files_used": len(spec_contents),
+                "code_changes_analyzed": 0,
+                "incremental": True,
+                "branch": specmap.branch,
+            }
+
+        # Re-annotate only the dirty files
+        dirty_changes = []
+        for fp in dirty_files:
+            if _is_ignored(fp, config.ignore_patterns):
+                continue
+            file_content = analyzer.get_file_content(repo_root, fp)
+            if file_content:
+                from specmap.indexer.code_analyzer import CodeChange
+                dirty_changes.append(CodeChange(
+                    file_path=fp,
+                    start_line=1,
+                    end_line=len(file_content.splitlines()),
+                    change_type="modified",
+                    content=file_content,
+                ))
+
+        if not dirty_changes:
+            specmap.head_sha = current_head
+            specmap.file_hashes = _compute_file_hashes(repo_root, specmap.annotations)
+            file_mgr.save(specmap)
+            return {
+                "status": "ok",
+                "annotations_created": 0,
+                "annotations_updated": 0,
+                "total_annotations": len(specmap.annotations),
+                "spec_files_used": len(spec_contents),
+                "code_changes_analyzed": 0,
+                "incremental": True,
+                "branch": specmap.branch,
+            }
+
+        # Generate new annotations for dirty files
+        llm_client = LLMClient(config)
+        mapper = Mapper(llm_client, repo_root)
+        new_annotations = await mapper.annotate_changes(dirty_changes, spec_contents, context=context)
+
+        # Merge: remove old annotations for dirty files, add new ones
+        dirty_set = {c.file_path for c in dirty_changes}
+        specmap.annotations = [a for a in specmap.annotations if a.file not in dirty_set]
+        specmap.annotations.extend(new_annotations)
+
         specmap.head_sha = current_head
+        specmap.file_hashes = _compute_file_hashes(repo_root, specmap.annotations)
         file_mgr.save(specmap)
+
         return {
             "status": "ok",
-            "annotations_created": 0,
+            "annotations_created": len(new_annotations),
             "annotations_updated": 0,
             "total_annotations": len(specmap.annotations),
             "spec_files_used": len(spec_contents),
-            "code_changes_analyzed": 0,
+            "code_changes_analyzed": len(dirty_changes),
             "incremental": True,
+            "dirty_files": sorted(dirty_set),
+            "llm_usage": llm_client.get_usage(),
             "branch": specmap.branch,
         }
 
@@ -234,6 +296,7 @@ async def _incremental_annotate(
 
     specmap.annotations = kept + shifted + new_annotations
     specmap.head_sha = current_head
+    specmap.file_hashes = _compute_file_hashes(repo_root, specmap.annotations)
     file_mgr.save(specmap)
 
     result = {
@@ -253,6 +316,29 @@ async def _incremental_annotate(
     if changed_specs:
         result["specs_changed"] = sorted(changed_specs)
     return result
+
+
+def _compute_file_hashes(repo_root: str, annotations: list) -> dict[str, str]:
+    """Hash current content of all files referenced by annotations."""
+    hashes: dict[str, str] = {}
+    for ann in annotations:
+        if ann.file not in hashes:
+            content = _read_file(repo_root, ann.file)
+            if content is not None:
+                hashes[ann.file] = hash_code(content)
+    return hashes
+
+
+def _find_dirty_files(repo_root: str, specmap) -> set[str]:
+    """Compare stored file_hashes to current content. Return files that differ."""
+    dirty: set[str] = set()
+    for file_path, stored_hash in specmap.file_hashes.items():
+        content = _read_file(repo_root, file_path)
+        if content is None:
+            dirty.add(file_path)  # file deleted
+        elif hash_code(content) != stored_hash:
+            dirty.add(file_path)
+    return dirty
 
 
 def _get_head_sha(repo_root: str) -> str:

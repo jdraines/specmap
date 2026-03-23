@@ -39,6 +39,9 @@ class CodeAnalyzer:
 
         for patched_file in patchset:
             file_path = patched_file.path
+            # unidiff only strips a/ and b/ — also strip mnemonic prefixes (c/, w/, o/, i/)
+            if len(file_path) > 2 and file_path[1] == '/' and file_path[0].isalpha():
+                file_path = file_path[2:]
             if not file_path:
                 continue
 

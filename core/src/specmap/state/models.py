@@ -49,3 +49,4 @@ class SpecmapFile(BaseModel):
     updated_by: str = "mcp:claude-code"
     annotations: list[Annotation] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(default_factory=list)
+    file_hashes: dict[str, str] = Field(default_factory=dict)

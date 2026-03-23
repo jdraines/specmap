@@ -44,7 +44,7 @@ def parse_incremental_diff(diff_text: str) -> dict[str, FileHunks]:
     """
     result: dict[str, FileHunks] = {}
 
-    file_re = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
+    file_re = re.compile(r"^\+\+\+ [a-z]/(.+)$", re.MULTILINE)
     hunk_re = re.compile(
         r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", re.MULTILINE
     )
