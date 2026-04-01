@@ -35,7 +35,6 @@ func (c *OAuthConfig) LoginURL() (string, *http.Cookie, error) {
 	q := u.Query()
 	q.Set("client_id", c.ClientID)
 	q.Set("redirect_uri", c.BaseURL+"/api/v1/auth/callback")
-	q.Set("scope", "read:user repo")
 	q.Set("state", state)
 	u.RawQuery = q.Encode()
 

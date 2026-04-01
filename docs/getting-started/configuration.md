@@ -19,6 +19,7 @@ Specmap loads configuration from two sources. Environment variables take precede
 | `SPECMAP_API_BASE` | `api_base` | -- | Custom API base URL (for proxies, local models) |
 | `SPECMAP_SPEC_PATTERNS` | `spec_patterns` | `**/*.md` | Comma-separated glob patterns for spec files |
 | `SPECMAP_IGNORE_PATTERNS` | `ignore_patterns` | `*.generated.go,*.lock,vendor/**` | Comma-separated patterns for files to ignore |
+| `SPECMAP_BASE_BRANCH` | `base_branch` | Auto-detect (`main` → `master`) | Branch to diff against when generating annotations |
 
 ## Config File Format
 
@@ -28,7 +29,8 @@ Specmap loads configuration from two sources. Environment variables take precede
   "api_key": "sk-...",
   "api_base": null,
   "spec_patterns": ["**/*.md"],
-  "ignore_patterns": ["*.generated.go", "*.lock", "vendor/**"]
+  "ignore_patterns": ["*.generated.go", "*.lock", "vendor/**"],
+  "base_branch": null
 }
 ```
 
@@ -84,4 +86,20 @@ export SPECMAP_API_BASE="http://localhost:11434"
 export SPECMAP_MODEL="azure/gpt-4o-mini"
 export SPECMAP_API_KEY="your-azure-key"
 export SPECMAP_API_BASE="https://your-resource.openai.azure.com"
+```
+
+### Use a Custom Base Branch
+
+Teams using `develop`, `staging`, or other branches as their PR target can override the auto-detected base branch:
+
+```bash
+export SPECMAP_BASE_BRANCH="develop"
+```
+
+Or in `.specmap/config.json`:
+
+```json
+{
+  "base_branch": "develop"
+}
 ```

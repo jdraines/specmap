@@ -1,1 +1,282 @@
 @import "tailwindcss";
+
+@theme {
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-sans: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* ── Light theme tokens ── */
+:root {
+  --surface-0: #fafaf9;
+  --surface-1: #ffffff;
+  --surface-2: #f5f5f4;
+  --border: #e7e5e4;
+  --border-strong: #d6d3d1;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-muted: #a8a29e;
+  --accent: #2563eb;
+  --accent-muted: #3b82f6;
+  --annotation-bg: #f0f9ff;
+  --annotation-border: #38bdf8;
+  --insert-bg: #f0fdf4;
+  --insert-text: #16a34a;
+  --insert-gutter: #dcfce7;
+  --delete-bg: #fef2f2;
+  --delete-text: #dc2626;
+  --delete-gutter: #fee2e2;
+  --hover-bg: #f5f5f4;
+  --badge-bg: #e0f2fe;
+  --badge-text: #0369a1;
+  --error-text: #dc2626;
+  --warning-bg: #fffbeb;
+  --warning-text: #b45309;
+  --minimap-dot: #38bdf8;
+  --focus-ring: #2563eb;
+  --kbd-bg: #f5f5f4;
+  --kbd-border: #d6d3d1;
+}
+
+/* ── Dark theme tokens ── */
+.dark {
+  --surface-0: #1c1917;
+  --surface-1: #292524;
+  --surface-2: #44403c;
+  --border: #44403c;
+  --border-strong: #57534e;
+  --text-primary: #fafaf9;
+  --text-secondary: #d6d3d1;
+  --text-muted: #78716c;
+  --accent: #60a5fa;
+  --accent-muted: #3b82f6;
+  --annotation-bg: #0c4a6e;
+  --annotation-border: #0ea5e9;
+  --insert-bg: #132f1e;
+  --insert-text: #4ade80;
+  --insert-gutter: #0d2818;
+  --delete-bg: #3b1316;
+  --delete-text: #f87171;
+  --delete-gutter: #2d0c0e;
+  --hover-bg: #44403c;
+  --badge-bg: #0c4a6e;
+  --badge-text: #7dd3fc;
+  --error-text: #f87171;
+  --warning-bg: #451a03;
+  --warning-text: #fbbf24;
+  --minimap-dot: #0ea5e9;
+  --focus-ring: #60a5fa;
+  --kbd-bg: #44403c;
+  --kbd-border: #57534e;
+}
+
+/* ── Base styles ── */
+body {
+  font-family: var(--font-mono);
+  background-color: var(--surface-0);
+  color: var(--text-primary);
+}
+
+/* ── react-diff-view overrides ── */
+.diff {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.diff-line {
+  border: none;
+}
+
+.diff td {
+  border: none;
+}
+
+.diff-gutter {
+  width: 50px;
+  color: var(--text-muted);
+  background-color: var(--surface-1);
+  padding: 0 8px;
+  cursor: default;
+  user-select: none;
+}
+
+.diff td.diff-code {
+  background-color: var(--surface-1);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.diff td.diff-gutter-insert {
+  background-color: var(--insert-gutter);
+}
+
+.diff td.diff-code-insert {
+  background-color: var(--insert-bg);
+  color: var(--text-primary);
+}
+
+.diff td.diff-gutter-delete {
+  background-color: var(--delete-gutter);
+}
+
+.diff td.diff-code-delete {
+  background-color: var(--delete-bg);
+  color: var(--text-primary);
+}
+
+.diff td.diff-code-insert .diff-code-edit {
+  background-color: color-mix(in srgb, var(--insert-text) 25%, transparent);
+}
+
+.diff td.diff-code-delete .diff-code-edit {
+  background-color: color-mix(in srgb, var(--delete-text) 25%, transparent);
+}
+
+.diff-gutter-omit,
+.diff-code-omit {
+  background-color: var(--surface-2);
+}
+
+.diff-widget {
+  background-color: transparent;
+}
+
+.diff-widget td {
+  padding: 0 0 16px 0;
+}
+
+/* ── Annotation ↔ code hover spotlight ── */
+.diff tr,
+[data-annotation-id] {
+  transition: opacity 0.15s ease;
+}
+
+/* When a hover is active, dim all non-highlighted rows and annotations */
+[data-has-hover="true"] .diff tr:not(.ann-line-hl):not(.diff-widget) {
+  opacity: 0.35;
+}
+
+[data-has-hover="true"] [data-annotation-id]:not([data-ann-hover="true"]) {
+  opacity: 0.35;
+}
+
+/* Active code rows: left border accent on the gutter cell */
+tr.ann-line-hl > td:first-child {
+  box-shadow: inset 3px 0 0 var(--annotation-border);
+}
+
+/* Active annotation: thicker left border to match */
+[data-ann-hover="true"] {
+  border-left-width: 3px !important;
+}
+
+/* ── Prose / markdown overrides ── */
+.themed-prose {
+  color: var(--text-secondary);
+}
+
+.themed-prose h1,
+.themed-prose h2,
+.themed-prose h3,
+.themed-prose h4,
+.themed-prose h5,
+.themed-prose h6 {
+  color: var(--text-primary);
+}
+
+.themed-prose strong {
+  color: var(--text-primary);
+}
+
+.themed-prose code {
+  color: var(--accent);
+  background-color: var(--surface-2);
+  padding: 0.125em 0.25em;
+  border-radius: 3px;
+  font-size: 0.875em;
+}
+
+.themed-prose pre {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+}
+
+.themed-prose pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.themed-prose a {
+  color: var(--accent);
+}
+
+.themed-prose blockquote {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 1em;
+  color: var(--text-muted);
+}
+
+.themed-prose ul,
+.themed-prose ol {
+  padding-left: 1.5em;
+}
+
+.themed-prose li {
+  margin: 0.25em 0;
+}
+
+.themed-prose hr {
+  border-color: var(--border);
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Annotation overlap handling ── */
+
+/* Hovering a side annotation brings it to front */
+[data-annotation-id]:hover {
+  z-index: 10 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background-color: var(--annotation-bg);
+}
+
+/* Expanded annotation stays elevated */
+[data-annotation-expanded="true"] {
+  z-index: 5;
+}
+
+/* Subtle top shadow on overlapping annotations */
+[data-annotation-overlapping="true"] {
+  clip-path: inset(-8px 0 0 0);
+  box-shadow: 0 -3px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* ── File focus indicator for keyboard nav ── */
+[data-file-focused="true"] {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}

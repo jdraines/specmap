@@ -21,29 +21,29 @@ export function RepoPage() {
   }, [owner, repo]);
 
   if (loading) return <LoadingSpinner />;
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) return <p className="text-[var(--error-text)]">{error}</p>;
 
   return (
-    <div>
-      <Breadcrumb items={[{ label: 'Repos', to: '/' }, { label: `${owner}/${repo}` }]} />
-      <h1 className="text-xl font-semibold text-gray-900 mb-4">Open Pull Requests</h1>
+    <div className="max-w-3xl mx-auto">
+      <Breadcrumb items={[{ label: 'repos', to: '/' }, { label: `${owner}/${repo}` }]} />
+      <h1 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">
+        open pull requests
+      </h1>
       {pullList.length === 0 ? (
-        <p className="text-gray-500">No open pull requests.</p>
+        <p className="text-[var(--text-muted)]">No open pull requests.</p>
       ) : (
-        <div className="grid gap-3">
+        <div className="border border-[var(--border)] divide-y divide-[var(--border)]">
           {pullList.map((pr) => (
             <Link
               key={pr.id}
               to={`/${owner}/${repo}/pull/${pr.number}`}
-              className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-blue-300 no-underline"
+              className="flex items-start gap-3 px-4 py-2.5 hover:bg-[var(--hover-bg)] no-underline"
             >
-              <div className="flex items-start gap-3">
-                <span className="text-gray-400 font-mono text-sm">#{pr.number}</span>
-                <div>
-                  <div className="font-medium text-gray-900">{pr.title}</div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    {pr.author_login} &middot; {pr.head_branch} &rarr; {pr.base_branch}
-                  </div>
+              <span className="text-[var(--text-muted)] text-xs pt-0.5">#{pr.number}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-[var(--text-primary)] truncate">{pr.title}</div>
+                <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                  {pr.author_login} &middot; {pr.head_branch} &rarr; {pr.base_branch}
                 </div>
               </div>
             </Link>

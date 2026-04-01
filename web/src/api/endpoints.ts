@@ -27,6 +27,10 @@ export const pulls = {
     apiFetch<PullFile[]>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/files`),
   annotations: (owner: string, repo: string, number: number) =>
     apiFetch<SpecmapFile>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/annotations`),
+  fileSource: (owner: string, repo: string, number: number, path: string) =>
+    apiFetch<{ content: string }>(
+      `/api/v1/repos/${owner}/${repo}/pulls/${number}/file-source?path=${encodeURIComponent(path)}`,
+    ),
 };
 
 export const specs = {

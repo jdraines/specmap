@@ -18,25 +18,33 @@ export function DashboardPage() {
   }, []);
 
   if (loading) return <LoadingSpinner />;
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) return <p className="text-[var(--error-text)]">{error}</p>;
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold text-gray-900 mb-4">Repositories</h1>
+    <div className="max-w-3xl mx-auto">
+      <h1 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">
+        repositories
+      </h1>
       {repoList.length === 0 ? (
-        <p className="text-gray-500">No repositories found.</p>
+        <div className="text-sm text-[var(--text-muted)] border border-[var(--border)] p-4">
+          <p className="mb-2">No repositories found.</p>
+          <p>
+            The specmap GitHub App may not be installed on any of your repositories.
+            Go to your GitHub settings to install the App and select which repositories to grant access to.
+          </p>
+        </div>
       ) : (
-        <div className="grid gap-3">
+        <div className="border border-[var(--border)] divide-y divide-[var(--border)]">
           {repoList.map((r) => (
             <Link
               key={r.id}
               to={`/${r.owner}/${r.name}`}
-              className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-blue-300 no-underline"
+              className="flex items-center justify-between px-4 py-2.5 hover:bg-[var(--hover-bg)] no-underline"
             >
-              <div className="font-medium text-gray-900">{r.full_name}</div>
+              <span className="text-sm text-[var(--text-primary)]">{r.full_name}</span>
               {r.private && (
-                <span className="text-xs text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 mt-1 inline-block">
-                  Private
+                <span className="text-[10px] text-[var(--text-muted)] border border-[var(--border)] px-1.5 py-0.5">
+                  private
                 </span>
               )}
             </Link>

@@ -1,4 +1,5 @@
 # Specmap task runner
+set dotenv-load
 
 # Default: show available commands
 default:

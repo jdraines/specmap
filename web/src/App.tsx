@@ -17,7 +17,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-[var(--surface-0)]">
         <LoadingSpinner />
       </div>
     );

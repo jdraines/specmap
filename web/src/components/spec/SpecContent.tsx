@@ -7,8 +7,6 @@ interface SpecContentProps {
 }
 
 function extractSection(markdown: string, heading: string): string {
-  // Try to find the section matching the heading.
-  // The heading path may be "Parent > Child". We look for the last segment.
   const segments = heading.split('>').map((s) => s.trim());
   const target = segments[segments.length - 1];
 
@@ -27,7 +25,6 @@ function extractSection(markdown: string, heading: string): string {
 
   if (startIdx === -1) return markdown;
 
-  // Find the end of this section (next heading of same or higher level).
   let endIdx = lines.length;
   for (let i = startIdx + 1; i < lines.length; i++) {
     const match = lines[i].match(/^(#{1,6})\s/);
@@ -44,7 +41,7 @@ export function SpecContent({ content, heading }: SpecContentProps) {
   const section = useMemo(() => extractSection(content, heading), [content, heading]);
 
   return (
-    <div className="prose prose-sm max-w-none">
+    <div className="themed-prose prose prose-sm max-w-none">
       <ReactMarkdown>{section}</ReactMarkdown>
     </div>
   );

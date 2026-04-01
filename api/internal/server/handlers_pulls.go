@@ -1,10 +1,12 @@
 package server
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
+	"github.com/specmap/specmap/api/internal/github"
 	"github.com/specmap/specmap/api/internal/models"
 )
 
@@ -166,4 +168,53 @@ func (s *Server) handleGetPullFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, files)
+}
+
+// handleGetFileSource returns the full content of a file at the PR's base branch ref.
+// GET /api/v1/repos/{owner}/{repo}/pulls/{number}/file-source?path=...
+func (s *Server) handleGetFileSource(w http.ResponseWriter, r *http.Request) {
+	owner := r.PathValue("owner")
+	repo := r.PathValue("repo")
+	numberStr := r.PathValue("number")
+	filePath := r.URL.Query().Get("path")
+
+	number, err := strconv.Atoi(numberStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid pull request number")
+		return
+	}
+
+	if filePath == "" {
+		writeError(w, http.StatusBadRequest, "missing path parameter")
+		return
+	}
+
+	token, err := s.getUserToken(r.Context())
+	if err != nil {
+		slog.Error("getting user token", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get GitHub token")
+		return
+	}
+
+	ghPull, err := s.gh.GetPull(r.Context(), token, owner, repo, number)
+	if err != nil {
+		slog.Error("fetching GitHub pull", "error", err)
+		writeError(w, http.StatusNotFound, "pull request not found")
+		return
+	}
+
+	content, err := s.gh.GetFileContent(r.Context(), token, owner, repo, filePath, ghPull.Base.Ref)
+	if err != nil {
+		if errors.Is(err, github.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "file not found at base branch")
+			return
+		}
+		slog.Error("fetching file source", "path", filePath, "error", err)
+		writeError(w, http.StatusBadGateway, "failed to fetch file from GitHub")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"content": string(content),
+	})
 }
