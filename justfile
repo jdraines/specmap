@@ -130,6 +130,41 @@ web-version VERSION:
     printf '%s\n' '{{VERSION}}' > api/VERSION
     @echo "web → {{VERSION}}. Tag with: git tag web/v{{VERSION}}"
 
+# --- Deployment ---
+
+# Build Docker image
+image-build:
+    docker build -t specmap:latest .
+
+# Push Docker image to ECR
+image-push:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ECR_URL=$(cd infra && terraform output -raw ecr_repository_url)
+    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$ECR_URL"
+    docker tag specmap:latest "$ECR_URL:latest"
+    docker push "$ECR_URL:latest"
+
+# Build, push, and deploy to ECS
+deploy: image-build image-push
+    #!/usr/bin/env bash
+    set -euo pipefail
+    CLUSTER=$(cd infra && terraform output -raw ecs_cluster_name)
+    SERVICE=$(cd infra && terraform output -raw ecs_service_name)
+    aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --force-new-deployment --region us-east-1
+
+# Initialize Terraform
+infra-init:
+    cd infra && terraform init
+
+# Plan infrastructure changes
+infra-plan:
+    cd infra && terraform plan
+
+# Apply infrastructure changes
+infra-apply:
+    cd infra && terraform apply
+
 # --- Combined ---
 
 # Run all unit tests
