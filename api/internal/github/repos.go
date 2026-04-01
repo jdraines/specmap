@@ -8,8 +8,6 @@ import (
 	"net/http"
 )
 
-const reposAPIURL = "https://api.github.com/user/repos"
-
 // Repo is the relevant fields from GitHub's repos API.
 type Repo struct {
 	ID       int64     `json:"id"`
@@ -25,34 +23,99 @@ type RepoOwner struct {
 	Login string `json:"login"`
 }
 
-// ListRepos lists repositories the authenticated user has access to.
-// Returns up to 100 repos sorted by most recently pushed.
-func ListRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+// Installation is a GitHub App installation.
+type Installation struct {
+	ID int64 `json:"id"`
+}
+
+// installationReposResponse wraps the paginated repos list from the installations API.
+type installationReposResponse struct {
+	Repositories []Repo `json:"repositories"`
+}
+
+// ListInstallations returns the GitHub App installations accessible to the authenticated user.
+func ListInstallations(ctx context.Context, accessToken string) ([]Installation, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		reposAPIURL+"?sort=pushed&per_page=100", nil)
+		"https://api.github.com/user/installations?per_page=100", nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating repos request: %w", err)
+		return nil, fmt.Errorf("creating installations request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching repos: %w", err)
+		return nil, fmt.Errorf("fetching installations: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitHub repos API failed (%d): %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("GitHub installations API failed (%d): %s", resp.StatusCode, body)
 	}
 
-	var repos []Repo
-	if err := json.NewDecoder(resp.Body).Decode(&repos); err != nil {
-		return nil, fmt.Errorf("parsing repos response: %w", err)
+	var result struct {
+		Installations []Installation `json:"installations"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("parsing installations response: %w", err)
 	}
 
-	return repos, nil
+	return result.Installations, nil
+}
+
+// ListRepos lists repositories accessible to the authenticated user via GitHub App installations.
+// It queries each installation for its repositories and aggregates the results.
+// Returns an empty list (no error) if no installations are found.
+func ListRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+	installations, err := ListInstallations(ctx, accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("listing installations: %w", err)
+	}
+
+	if len(installations) == 0 {
+		return []Repo{}, nil
+	}
+
+	var allRepos []Repo
+	for _, inst := range installations {
+		repos, err := listInstallationRepos(ctx, accessToken, inst.ID)
+		if err != nil {
+			return nil, fmt.Errorf("listing repos for installation %d: %w", inst.ID, err)
+		}
+		allRepos = append(allRepos, repos...)
+	}
+
+	return allRepos, nil
+}
+
+// listInstallationRepos fetches repositories for a specific installation.
+func listInstallationRepos(ctx context.Context, accessToken string, installationID int64) ([]Repo, error) {
+	url := fmt.Sprintf("https://api.github.com/user/installations/%d/repositories?per_page=100", installationID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating installation repos request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching installation repos: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub installation repos API failed (%d): %s", resp.StatusCode, body)
+	}
+
+	var result installationReposResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("parsing installation repos response: %w", err)
+	}
+
+	return result.Repositories, nil
 }
 
 // GetRepo fetches a single repository by owner/name.

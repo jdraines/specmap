@@ -111,17 +111,36 @@ Open a pull request on GitHub. The `.specmap/{branch}.json` file is now in the P
 
 This requires the Go API server, PostgreSQL, and the React frontend.
 
-### 1. Create a GitHub OAuth App
+### 1. Create a GitHub App
 
-Go to [github.com/settings/applications/new](https://github.com/settings/applications/new):
+Go to [github.com/settings/apps/new](https://github.com/settings/apps/new):
 
 | Field | Value |
 |-------|-------|
-| Application name | Specmap (dev) |
+| GitHub App name | Specmap (dev) |
 | Homepage URL | `https://localhost:8080` |
-| Authorization callback URL | `https://localhost:8080/api/v1/auth/callback` |
+| Callback URL | `https://localhost:8080/api/v1/auth/callback` |
+| Request user authorization (OAuth) during installation | Checked |
+| Webhook | **Uncheck "Active"** — not needed for local dev (see [Production Deployment](../deployment/production.md) for webhook setup) |
 
-Save the **Client ID** and **Client Secret**.
+**Required permissions (under "Repository permissions"):**
+
+| Permission | Access |
+|------------|--------|
+| Contents | Read-only |
+| Pull requests | Read-only |
+| Metadata | Read-only |
+
+No account or organization permissions are needed.
+
+**Where can this GitHub App be installed?**
+
+- **Only on this account** — use this for local development
+- **Any account** — select this if you want other users or organizations to install it; an org admin must approve the installation
+
+Save the **Client ID** and generate a **Client Secret**.
+
+After creating the App, install it on the repositories you want specmap to access. Go to your App settings > Install App, select your account, and choose "Only select repositories." For organizations, an org admin (or someone with GitHub App management permissions) must perform the installation.
 
 ### 2. Generate local HTTPS certificates
 
@@ -272,6 +291,8 @@ The Go API server and Vite dev server run directly on the host. The API server a
 
 **"Empty annotations on PR page"** — The `.specmap/{branch}.json` file must be committed and pushed to the PR branch. The API fetches it from GitHub at the PR's head SHA.
 
-**"OAuth callback error"** — Verify the callback URL in your GitHub OAuth App settings matches `BASE_URL` + `/api/v1/auth/callback` exactly.
+**"OAuth callback error"** — Verify the callback URL in your GitHub App settings matches `BASE_URL` + `/api/v1/auth/callback` exactly.
+
+**"No repositories found"** — The GitHub App must be installed on at least one repository. Go to your GitHub App settings > Install App and select the repositories you want specmap to access.
 
 **"Login redirects but no session"** — Check that `BASE_URL` uses `https://` (not `http://`). The session cookie requires a secure context.

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/specmap/specmap/api/internal/github"
 	"github.com/specmap/specmap/api/internal/models"
@@ -99,7 +100,9 @@ func (s *Server) handleGetAnnotations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Cache miss — fetch .specmap/{head_branch}.json from the repo.
-	specmapPath := fmt.Sprintf(".specmap/%s.json", pr.HeadBranch)
+	// The Python CLI sanitizes branch names: "/" → "--".
+	sanitizedBranch := strings.ReplaceAll(pr.HeadBranch, "/", "--")
+	specmapPath := fmt.Sprintf(".specmap/%s.json", sanitizedBranch)
 	content, err := s.gh.GetFileContent(r.Context(), token, owner, repo, specmapPath, pr.HeadSHA)
 	if err != nil {
 		if errors.Is(err, github.ErrNotFound) {

@@ -61,6 +61,18 @@ type MappingCache struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+// Installation represents a GitHub App installation on a user or organization account.
+type Installation struct {
+	ID                  int64      `json:"id"`
+	GitHubID            int64      `json:"github_id"`
+	AccountLogin        string     `json:"account_login"`
+	AccountType         string     `json:"account_type"`
+	RepositorySelection string     `json:"repository_selection"`
+	SuspendedAt         *time.Time `json:"suspended_at"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
 // Session represents a user's authenticated session (stored as JWT claims, not in DB).
 type Session struct {
 	UserID    int64  `json:"user_id"`

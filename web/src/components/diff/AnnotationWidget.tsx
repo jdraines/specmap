@@ -1,45 +1,55 @@
 import type { Annotation } from '../../api/types';
 import { SpecBadge } from './SpecBadge';
 
+const CITATION_RE = /\[(\d+)\]/g;
+
+interface AnnotationContentProps {
+  annotation: Annotation;
+}
+
+export function AnnotationContent({ annotation }: AnnotationContentProps) {
+  // Strip citation markers from text
+  const cleanText = annotation.description
+    .replace(CITATION_RE, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // Collect matching refs
+  const refEntries: { id: number; ref: NonNullable<(typeof annotation.refs)[number]> }[] = [];
+  for (const match of annotation.description.matchAll(CITATION_RE)) {
+    const refId = parseInt(match[1], 10);
+    const ref = annotation.refs.find((r) => r.id === refId);
+    if (ref) refEntries.push({ id: refId, ref });
+  }
+
+  return (
+    <>
+      <div className="text-[var(--text-primary)] leading-relaxed">{cleanText}</div>
+      {refEntries.length > 0 && (
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          {refEntries.map(({ id, ref }) => (
+            <SpecBadge key={id} refId={id} specRef={ref} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 interface AnnotationWidgetProps {
   annotation: Annotation;
 }
 
-// Matches [N] citation patterns in the description text.
-const CITATION_RE = /\[(\d+)\]/g;
-
 export function AnnotationWidget({ annotation }: AnnotationWidgetProps) {
-  // Split the description into text segments and citation badges.
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-
-  for (const match of annotation.description.matchAll(CITATION_RE)) {
-    const refId = parseInt(match[1], 10);
-    const ref = annotation.refs.find((r) => r.id === refId);
-
-    if (match.index > lastIndex) {
-      parts.push(annotation.description.slice(lastIndex, match.index));
-    }
-
-    if (ref) {
-      parts.push(<SpecBadge key={`${annotation.id}-ref-${refId}`} refId={refId} specRef={ref} />);
-    } else {
-      parts.push(match[0]);
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < annotation.description.length) {
-    parts.push(annotation.description.slice(lastIndex));
-  }
-
   return (
-    <div className="mx-4 my-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm">
-      <div className="text-xs text-gray-400 font-mono mb-1">
+    <div
+      className="p-3 bg-[var(--annotation-bg)] border-l-2 border-[var(--annotation-border)] text-sm"
+      data-annotation-id={annotation.id}
+    >
+      <div className="text-xs text-[var(--text-muted)] mb-1">
         L{annotation.start_line}-{annotation.end_line}
       </div>
-      <div className="text-gray-800 leading-relaxed">{parts}</div>
+      <AnnotationContent annotation={annotation} />
     </div>
   );
 }

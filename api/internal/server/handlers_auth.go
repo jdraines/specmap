@@ -25,6 +25,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleCallback handles the OAuth callback from GitHub.
 func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
+	// GitHub App post-installation redirect: setup_action is present but state is not
+	// (this isn't a user-initiated OAuth flow). The installation is already complete —
+	// redirect to the frontend where the user can log in normally.
+	if r.URL.Query().Get("setup_action") != "" && r.URL.Query().Get("state") == "" {
+		slog.Info("GitHub App installation redirect",
+			"setup_action", r.URL.Query().Get("setup_action"),
+			"installation_id", r.URL.Query().Get("installation_id"),
+		)
+		http.Redirect(w, r, s.cfg.FrontendURL+"/", http.StatusTemporaryRedirect)
+		return
+	}
+
 	// Verify state matches cookie (CSRF protection).
 	state := r.URL.Query().Get("state")
 	cookieState, err := auth.GetStateCookie(r)
@@ -98,7 +110,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, auth.SessionCookie(jwt))
 
 	// Redirect to the frontend dashboard.
-	http.Redirect(w, r, s.cfg.BaseURL+"/", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, s.cfg.FrontendURL+"/", http.StatusTemporaryRedirect)
 }
 
 // handleLogout clears the session cookie.
