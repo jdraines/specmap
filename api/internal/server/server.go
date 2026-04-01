@@ -2,6 +2,7 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -69,7 +70,7 @@ func (s *Server) routes() {
 	// Health check (no auth).
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+		fmt.Fprintf(w, `{"status":"ok","version":"%s"}`, s.cfg.Version)
 	})
 
 	// Auth endpoints (no auth required).

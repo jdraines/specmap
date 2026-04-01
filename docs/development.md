@@ -40,6 +40,7 @@ specmap/
 │   ├── src/
 │   │   ├── api/           # TypeScript API client
 │   │   ├── stores/        # Zustand state management
+│   │   ├── hooks/         # Custom React hooks
 │   │   ├── components/    # React components
 │   │   └── pages/         # Route pages
 │   └── vite.config.ts

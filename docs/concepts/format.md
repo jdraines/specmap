@@ -24,7 +24,7 @@ The filename is derived from the branch name with `/` replaced by `--`:
   "updated_by": "mcp:claude-code",
   "annotations": [
     {
-      "id": "ann_a1b2c3d4e5f6",
+      "id": "a_a1b2c3d4e5f6",
       "file": "auth/session.go",
       "start_line": 15,
       "end_line": 42,
@@ -48,7 +48,8 @@ The filename is derived from the branch name with `/` replaced by `--`:
       "created_at": "2025-01-15T10:30:00Z"
     }
   ],
-  "ignore_patterns": ["*.generated.go", "*.lock", "vendor/**"]
+  "ignore_patterns": ["*.generated.go", "*.lock", "vendor/**"],
+  "file_hashes": {}
 }
 ```
 
@@ -66,12 +67,13 @@ The filename is derived from the branch name with `/` replaced by `--`:
 | `updated_by` | `string` | What created/updated the file (e.g., `mcp:claude-code`) |
 | `annotations` | `array` | List of code region annotations with spec references |
 | `ignore_patterns` | `string[]` | Glob patterns for files to exclude from coverage |
+| `file_hashes` | `object` | Map of file path → content hash, used for incremental diff tracking |
 
 ### Annotation
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | `string` | Unique identifier (`ann_` + 12 hex chars) |
+| `id` | `string` | Unique identifier (`a_` + 12 hex chars) |
 | `file` | `string` | Relative path to the source file |
 | `start_line` | `int` | First line of the code region (1-based, inclusive) |
 | `end_line` | `int` | Last line of the code region (1-based, inclusive) |

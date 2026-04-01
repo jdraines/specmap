@@ -74,7 +74,10 @@ nav:
   - Concepts:
       - Architecture: concepts/architecture.md
       - Specmap Format: concepts/format.md
+      - Versioning: concepts/versioning.md
       - Hashing & Reindexing: concepts/hashing.md
       - Annotations: concepts/coverage.md
   - Development: development.md
-  - Roadmap: roadmap.md
+  - Plans:
+    - Roadmap: roadmap.md
+    - Deployment: deployment/production.md

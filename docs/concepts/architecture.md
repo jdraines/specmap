@@ -95,6 +95,15 @@ graph TB
 
 Phase 2 adds a read-only web UI for reviewing PRs with spec annotations. Reviewers log in with GitHub, browse repos and PRs, and see diffs with annotation widgets inline. Clicking a `[N]` citation opens the spec content in a side panel.
 
+UI capabilities:
+
+- **Layout modes** — inline, side-by-side, and auto (responsive, switches at 1400px viewport width)
+- **Keyboard navigation** — `j`/`k` for files, `n`/`p` for annotations, `?` for help overlay
+- **Annotation minimap** — right-edge dots for quick navigation to annotations
+- **Hunk expansion** — click to expand hidden context between diff hunks, powered by the `file-source` API endpoint
+- **Hover cross-highlighting** — hovering an annotation highlights its code lines and vice versa
+- **File-source API** — `GET /api/v1/repos/{owner}/{repo}/pulls/{number}/file-source?path=...` returns raw file content for hunk expansion
+
 The Go API server fetches `.specmap/{branch}.json` from the repo via the GitHub Contents API and caches the result in PostgreSQL. Spec file content is fetched on demand when a reviewer opens a citation.
 
 See [Roadmap](../roadmap.md) for the full phased delivery plan.

@@ -103,7 +103,6 @@ uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=c
 ## Verify Installation
 
 ```bash
-specmap --help
+specmap --version   # specmap 0.1.0
+specmap --help      # Available commands and global flags
 ```
-
-You should see the available commands (`validate`, `status`) and global flags.

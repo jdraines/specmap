@@ -254,9 +254,15 @@ After login, the dashboard shows your GitHub repos. Click a repo, then click a P
 The PR review page shows:
 
 - **Diff viewer** — each file's diff rendered with syntax highlighting
+- **Layout modes** — toggle between inline, side-by-side, and auto layout in the toolbar; auto mode switches to inline below 1400px viewport width
 - **Annotation widgets** — blue cards inline in the diff showing annotation descriptions
+- **Hover cross-highlighting** — hovering an annotation highlights its corresponding code lines, and vice versa
 - **`[N]` badges** — clickable citations in the annotation text; hover for a tooltip with the spec heading and excerpt
 - **Spec panel** — clicking a badge opens a side panel showing the spec file's markdown content, scrolled to the cited section
+- **Annotation minimap** — colored dots along the right edge of the viewport for jumping directly to annotations
+- **File jumper** — dropdown in the toolbar to jump to a specific file in the diff
+- **Hunk expansion** — click the expansion button between hunks to reveal hidden context lines (fetched from the file-source API)
+- **Keyboard shortcuts** — press `?` to open the shortcut help overlay. Key bindings include: `j`/`k` (next/previous file), `n`/`p` (next/previous annotation), `o` (collapse/expand file), `t` (toggle theme), `Esc` (close panels)
 
 If the PR has no `.specmap/` file, the annotations section is empty.
 

@@ -6,12 +6,13 @@ import type { Annotation } from '../api/types';
 export interface PositionedAnnotation {
   annotation: Annotation;
   top: number;
-  overlapping: boolean;
 }
 
 export interface AnnotationPositionsResult {
   positions: PositionedAnnotation[];
   minHeight: number;
+  measuredHeightsRef: RefObject<Map<string, number>>;
+  heightsVersion: number;
 }
 
 function findChangeKeyForLine(hunks: HunkData[], line: number): string | null {
@@ -31,29 +32,28 @@ function findChangeKeyForLine(hunks: HunkData[], line: number): string | null {
 
 const GAP = 8;
 
-const EMPTY: AnnotationPositionsResult = { positions: [], minHeight: 0 };
+const EMPTY_POSITIONS: { positions: PositionedAnnotation[]; minHeight: number } = { positions: [], minHeight: 0 };
 
 export function useAnnotationPositions(
   annotations: Annotation[],
   hunks: HunkData[],
   mode: 'inline' | 'side',
   containerRef: RefObject<HTMLDivElement | null>,
-  expandedIds: Set<string> = new Set(),
 ): AnnotationPositionsResult {
-  const [result, setResult] = useState<AnnotationPositionsResult>(EMPTY);
-  const measuredHeights = useRef<Map<string, number>>(new Map());
+  const [result, setResult] = useState(EMPTY_POSITIONS);
+  const measuredHeightsRef = useRef<Map<string, number>>(new Map());
+  const [heightsVersion, setHeightsVersion] = useState(0);
 
   const calculate = useCallback(() => {
     const container = containerRef.current;
     if (!container || mode !== 'side' || annotations.length === 0) {
-      setResult(EMPTY);
+      setResult(EMPTY_POSITIONS);
       return;
     }
 
     const containerRect = container.getBoundingClientRect();
     const positions: PositionedAnnotation[] = [];
 
-    // First pass: position at natural code-line-aligned positions
     for (const ann of annotations) {
       let key: string | null = null;
       for (let line = ann.start_line; line <= ann.end_line; line++) {
@@ -70,60 +70,47 @@ export function useAnnotationPositions(
         }
       }
 
-      positions.push({ annotation: ann, top, overlapping: false });
+      positions.push({ annotation: ann, top });
     }
 
-    // Sort by natural position
     positions.sort((a, b) => a.top - b.top);
 
     // Measure actual rendered heights from DOM
+    let heightsChanged = false;
     for (const pos of positions) {
       const el = container.querySelector(`[data-annotation-id="${CSS.escape(pos.annotation.id)}"]`);
       if (el) {
-        measuredHeights.current.set(pos.annotation.id, el.getBoundingClientRect().height);
+        const h = el.getBoundingClientRect().height;
+        const prev = measuredHeightsRef.current.get(pos.annotation.id);
+        if (prev === undefined || Math.abs(prev - h) > 1) {
+          measuredHeightsRef.current.set(pos.annotation.id, h);
+          heightsChanged = true;
+        }
       }
     }
 
-    // Detect overlaps and adjust expanded annotations
-    for (let i = 1; i < positions.length; i++) {
-      const prevId = positions[i - 1].annotation.id;
-      const prevHeight = measuredHeights.current.get(prevId) ?? 80;
-      const prevBottom = positions[i - 1].top + prevHeight;
-
-      if (positions[i].top < prevBottom) {
-        positions[i].overlapping = true;
-      }
-
-      // If previous annotation is expanded, push this one down
-      if (expandedIds.has(prevId)) {
-        const minTop = prevBottom + GAP;
-        if (positions[i].top < minTop) {
-          positions[i].top = minTop;
-          // After being pushed down, re-check overlap (it was forced down, so not "naturally" overlapping)
-          positions[i].overlapping = false;
-        }
-      }
+    // Only bump version when heights actually changed
+    if (heightsChanged) {
+      setHeightsVersion((v) => v + 1);
     }
 
     // Compute minHeight
     let minHeight = 0;
     if (positions.length > 0) {
       const last = positions[positions.length - 1];
-      const lastHeight = measuredHeights.current.get(last.annotation.id) ?? 80;
+      const lastHeight = measuredHeightsRef.current.get(last.annotation.id) ?? 80;
       minHeight = last.top + lastHeight + GAP;
     }
 
     setResult({ positions, minHeight });
-  }, [annotations, hunks, mode, containerRef, expandedIds]);
+  }, [annotations, hunks, mode, containerRef]);
 
   useEffect(() => {
     if (mode !== 'side' || annotations.length === 0 || !containerRef.current) {
-      setResult(EMPTY);
+      setResult(EMPTY_POSITIONS);
       return;
     }
 
-    // Defer to let layout settle, then calculate twice:
-    // first pass positions annotations, second pass measures their actual heights
     const raf = requestAnimationFrame(() => {
       calculate();
       requestAnimationFrame(calculate);
@@ -136,7 +123,7 @@ export function useAnnotationPositions(
       cancelAnimationFrame(raf);
       observer.disconnect();
     };
-  }, [annotations, hunks, mode, containerRef, expandedIds, calculate]);
+  }, [annotations, hunks, mode, containerRef, calculate]);
 
-  return result;
+  return { ...result, measuredHeightsRef, heightsVersion };
 }

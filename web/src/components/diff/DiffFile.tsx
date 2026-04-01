@@ -9,6 +9,7 @@ import { AnnotationWidget } from './AnnotationWidget';
 import { SideAnnotation } from './SideAnnotation';
 import { HunkExpander } from './HunkExpander';
 import { useAnnotationPositions } from '../../hooks/useAnnotationPositions';
+import { useAnnotationSpacers } from '../../hooks/useAnnotationSpacers';
 
 interface DiffFileProps {
   file: PullFile;
@@ -36,7 +37,6 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
   const { owner, repo, number } = useParams<{ owner: string; repo: string; number: string }>();
   const [collapsed, setCollapsed] = useState(false);
   const [hoveredAnnId, setHoveredAnnId] = useState<string | null>(null);
-  const [expandedAnnotations, setExpandedAnnotations] = useState<Set<string>>(new Set());
   const [oldSource, setOldSource] = useState<string | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const pendingExpand = useRef<[number, number] | null>(null);
@@ -181,19 +181,9 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
     return { widgets: w, unmatchedAnnotations: unmatched };
   }, [annotations, renderingHunks, mode]);
 
-  const toggleAnnotationExpand = useCallback((id: string) => {
-    setExpandedAnnotations((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
+  const sideResult = useAnnotationPositions(annotations, renderingHunks, mode, containerRef);
 
-  const sideResult = useAnnotationPositions(annotations, renderingHunks, mode, containerRef, expandedAnnotations);
+  const spacerWidgets = useAnnotationSpacers(annotations, renderingHunks, mode, containerRef, sideResult.measuredHeightsRef, sideResult.heightsVersion);
 
   const renderHunksWithExpanders = useCallback(
     (hunks: HunkData[]) => {
@@ -213,7 +203,7 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
               <Decoration key="expand-top">
                 <HunkExpander
                   lineCount={gapLines}
-                  onExpand={() => handleExpand(1, hunk.oldStart - 1)}
+                  onExpand={() => handleExpand(1, hunk.oldStart)}
                   loading={sourceLoading}
                 />
               </Decoration>,
@@ -229,7 +219,7 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
               <Decoration key={`expand-${gapStart}`}>
                 <HunkExpander
                   lineCount={gapEnd - gapStart + 1}
-                  onExpand={() => handleExpand(gapStart, gapEnd)}
+                  onExpand={() => handleExpand(gapStart, gapEnd + 1)}
                   loading={sourceLoading}
                 />
               </Decoration>,
@@ -284,7 +274,7 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
                   viewType="unified"
                   diffType={diffData.type}
                   hunks={renderingHunks}
-                  widgets={widgets}
+                  widgets={{ ...widgets, ...spacerWidgets }}
                   generateAnchorID={(change) => getChangeKey(change)}
                 >
                   {renderHunksWithExpanders}
@@ -293,14 +283,11 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
             </div>
             {mode === 'side' && sideResult.positions.length > 0 && (
               <div className="absolute top-0 right-0 w-[360px]">
-                {sideResult.positions.map(({ annotation, top, overlapping }) => (
+                {sideResult.positions.map(({ annotation, top }) => (
                   <SideAnnotation
                     key={annotation.id}
                     annotation={annotation}
                     top={top}
-                    overlapping={overlapping}
-                    expanded={expandedAnnotations.has(annotation.id)}
-                    onToggleExpand={() => toggleAnnotationExpand(annotation.id)}
                   />
                 ))}
               </div>

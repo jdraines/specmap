@@ -9,6 +9,7 @@ import traceback
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
+from specmap import __version__
 from specmap.config import _detect_repo_root
 from specmap.tools.annotate import annotate
 from specmap.tools.check_sync import check_sync
@@ -16,7 +17,7 @@ from specmap.tools.check_sync import check_sync
 
 def create_server() -> Server:
     """Create and configure the MCP server with all tools."""
-    server = Server("specmap")
+    server = Server("specmap", version=__version__)
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
