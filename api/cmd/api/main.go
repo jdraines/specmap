@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -47,8 +48,17 @@ func run() error {
 		return fmt.Errorf("running migrations: %w", err)
 	}
 
+	// Derive embedded frontend FS (nil when static/ has no index.html, e.g. local dev).
+	var frontendFS fs.FS
+	if sub, err := fs.Sub(staticFiles, "static"); err == nil {
+		if _, err := fs.Stat(sub, "index.html"); err == nil {
+			frontendFS = sub
+			slog.Info("embedded frontend detected, serving SPA")
+		}
+	}
+
 	// Build server.
-	srv := server.New(cfg, st)
+	srv := server.New(cfg, st, frontendFS)
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      srv.Handler(),

@@ -42,3 +42,13 @@ site/
 node_modules/
 web/dist/
 api/web/dist/
+
+# Embedded frontend build artifacts
+api/cmd/api/static/*
+!api/cmd/api/static/.gitkeep
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate*
+infra/.terraform.lock.hcl
+infra/terraform.tfvars

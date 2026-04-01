@@ -1,0 +1,15 @@
+.git
+core/
+docs/
+site/
+node_modules/
+web/node_modules/
+*.pem
+.env
+.env.*
+infra/
+.venv/
+__pycache__/
+htmlcov/
+.coverage
+coverage.out

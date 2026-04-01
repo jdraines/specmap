@@ -29,6 +29,7 @@ type Config struct {
 	// GitHub App (optional — enables app-level auth and webhooks)
 	GitHubAppID          int64  // GITHUB_APP_ID
 	GitHubPrivateKeyPath string // GITHUB_PRIVATE_KEY_PATH (path to .pem file)
+	GitHubPrivateKey     string // GITHUB_PRIVATE_KEY (raw PEM content, alternative to file path)
 	GitHubWebhookSecret  string // GITHUB_WEBHOOK_SECRET
 
 	// CORS
@@ -85,6 +86,7 @@ func Load() (*Config, error) {
 		EncryptionKey:        os.Getenv("ENCRYPTION_KEY"),
 		GitHubAppID:          appID,
 		GitHubPrivateKeyPath: os.Getenv("GITHUB_PRIVATE_KEY_PATH"),
+		GitHubPrivateKey:     os.Getenv("GITHUB_PRIVATE_KEY"),
 		GitHubWebhookSecret:  os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		CORSOrigin:           os.Getenv("CORS_ORIGIN"),
 		TLSCert:              os.Getenv("TLS_CERT"),

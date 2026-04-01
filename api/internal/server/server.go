@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,19 +16,22 @@ import (
 
 // Server holds dependencies and exposes the HTTP handler.
 type Server struct {
-	cfg     *config.Config
-	store   *store.Store
-	oauth   *auth.OAuthConfig
-	gh      GitHubAPI
-	appAuth *github.AppAuth // nil when GITHUB_APP_ID / GITHUB_PRIVATE_KEY_PATH not set
-	mux     *http.ServeMux
+	cfg      *config.Config
+	store    *store.Store
+	oauth    *auth.OAuthConfig
+	gh       GitHubAPI
+	appAuth  *github.AppAuth // nil when GITHUB_APP_ID / GITHUB_PRIVATE_KEY_PATH not set
+	staticFS fs.FS           // nil when no embedded frontend
+	mux      *http.ServeMux
 }
 
 // New creates a Server and registers all routes.
-func New(cfg *config.Config, st *store.Store) *Server {
+// staticFS may be nil (local dev with no embedded frontend).
+func New(cfg *config.Config, st *store.Store, staticFS fs.FS) *Server {
 	s := &Server{
-		cfg:   cfg,
-		store: st,
+		cfg:      cfg,
+		store:    st,
+		staticFS: staticFS,
 		oauth: &auth.OAuthConfig{
 			ClientID:     cfg.GitHubClientID,
 			ClientSecret: cfg.GitHubClientSecret,
@@ -37,11 +41,18 @@ func New(cfg *config.Config, st *store.Store) *Server {
 		mux: http.NewServeMux(),
 	}
 
-	if cfg.GitHubAppID != 0 && cfg.GitHubPrivateKeyPath != "" {
-		pem, err := os.ReadFile(cfg.GitHubPrivateKeyPath)
-		if err != nil {
-			slog.Error("reading GitHub App private key", "path", cfg.GitHubPrivateKeyPath, "error", err)
-		} else {
+	if cfg.GitHubAppID != 0 {
+		var pem []byte
+		var err error
+		if cfg.GitHubPrivateKey != "" {
+			pem = []byte(cfg.GitHubPrivateKey)
+		} else if cfg.GitHubPrivateKeyPath != "" {
+			pem, err = os.ReadFile(cfg.GitHubPrivateKeyPath)
+			if err != nil {
+				slog.Error("reading GitHub App private key", "path", cfg.GitHubPrivateKeyPath, "error", err)
+			}
+		}
+		if err == nil && len(pem) > 0 {
 			appAuth, err := github.NewAppAuth(cfg.GitHubAppID, pem)
 			if err != nil {
 				slog.Error("initializing GitHub App auth", "error", err)
@@ -102,5 +113,10 @@ func (s *Server) routes() {
 	if s.cfg.GitHubWebhookSecret != "" {
 		s.mux.HandleFunc("POST /api/v1/webhooks/github", s.handleWebhook)
 		slog.Info("webhook endpoint enabled")
+	}
+
+	// Embedded SPA (production builds only — nil in local dev).
+	if s.staticFS != nil {
+		s.mux.Handle("/", spaHandler(s.staticFS))
 	}
 }
