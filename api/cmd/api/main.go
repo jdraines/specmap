@@ -28,6 +28,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+	cfg.Version = Version
+	slog.Info("specmap-api", "version", Version)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import typer
 
+from specmap import __version__
+
 app = typer.Typer(
     name="specmap",
     help="Spec-to-code mapping validation and coverage",
@@ -42,12 +44,19 @@ def _detect_branch(repo_root: str) -> str:
     raise typer.Exit(code=1)
 
 
+def _version_callback(value: bool):
+    if value:
+        typer.echo(f"specmap {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
     repo_root: str = typer.Option("", help="Repository root (default: auto-detect)"),
     branch: str = typer.Option("", help="Branch name (default: auto-detect)"),
     no_color: bool = typer.Option(False, help="Disable color output"),
+    version: bool = typer.Option(False, "--version", callback=_version_callback, is_eager=True, help="Show version and exit"),
 ):
     """Spec-to-code mapping validation and coverage."""
     ctx.ensure_object(dict)

@@ -41,7 +41,7 @@ cli-run *ARGS:
 
 # Build API binary
 api-build:
-    cd api && go build -o specmap-api ./cmd/api
+    cd api && go build -ldflags "-X main.Version=$(cat VERSION)" -o specmap-api ./cmd/api
 
 # Run API server
 api-run:
@@ -112,6 +112,23 @@ functional-test *ARGS:
 # Run fast functional tests (skip slow)
 functional-test-fast *ARGS:
     cd core && uv run pytest ../tests -o asyncio_mode=auto -m "not slow" {{ARGS}}
+
+# --- Versioning ---
+
+# Show current versions
+versions:
+    @echo "core: $(sed -n 's/^version = \"\(.*\)\"/\1/p' core/pyproject.toml)"
+    @echo "web:  $(cat api/VERSION)"
+
+# Bump core version (updates pyproject.toml)
+core-version VERSION:
+    sed -i 's/^version = ".*"/version = "{{VERSION}}"/' core/pyproject.toml
+    @echo "core → {{VERSION}}. Tag with: git tag core/v{{VERSION}}"
+
+# Bump web version (updates api/VERSION)
+web-version VERSION:
+    printf '%s\n' '{{VERSION}}' > api/VERSION
+    @echo "web → {{VERSION}}. Tag with: git tag web/v{{VERSION}}"
 
 # --- Combined ---
 

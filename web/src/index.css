@@ -264,15 +264,10 @@ tr.ann-line-hl > td:first-child {
   background-color: var(--annotation-bg);
 }
 
-/* Expanded annotation stays elevated */
-[data-annotation-expanded="true"] {
-  z-index: 5;
-}
-
-/* Subtle top shadow on overlapping annotations */
-[data-annotation-overlapping="true"] {
-  clip-path: inset(-8px 0 0 0);
-  box-shadow: 0 -3px 6px rgba(0, 0, 0, 0.1);
+/* ── Spacer widgets (no padding override) ── */
+.diff-widget-spacer td {
+  padding: 0 !important;
+  line-height: 0;
 }
 
 /* ── File focus indicator for keyboard nav ── */

@@ -40,6 +40,9 @@ type Config struct {
 	// TLS (local dev with mkcert)
 	TLSCert string // path to TLS certificate file
 	TLSKey  string // path to TLS private key file
+
+	// Version (set by main, not from env)
+	Version string
 }
 
 // Load reads configuration from environment variables.

@@ -66,7 +66,7 @@ Verifies that existing annotations are still valid by checking that their line r
   "total": 11,
   "invalid_details": [
     {
-      "annotation_id": "ann_a1b2c3d4e5f6",
+      "annotation_id": "a_a1b2c3d4e5f6",
       "file": "auth/session.go",
       "start_line": 15,
       "end_line": 42,
