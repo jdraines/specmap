@@ -17,7 +17,7 @@ This guide walks through a complete local workflow: generating specmap annotatio
 | Component | Purpose | Install |
 |-----------|---------|---------|
 | Node.js 20+ | React frontend | System package manager |
-| [just](https://github.com/casey/just) | Task runner | `cargo install just` or system package manager |
+| [just](https://github.com/casey/just) | Task runner | `cargo install just` or [system packages](https://github.com/casey/just#installation) |
 
 ## Architecture
 
@@ -106,63 +106,13 @@ Open a pull request on GitHub. The `.specmap/{branch}.json` file is now in the P
 
 ## Part 2: View Annotations in the Web UI
 
-This requires the Python API server and the React frontend.
+This requires cloning the specmap repo and running the API server + React frontend locally. Follow the setup steps in the [Development guide](../development.md#running-the-web-ui) (GitHub OAuth App, `.env`, `just serve` + `just web-dev`), then come back here.
 
-### 1. Create a GitHub OAuth App
-
-Go to [github.com/settings/developers](https://github.com/settings/developers) → **OAuth Apps** → **New OAuth App**:
-
-| Field | Value |
-|-------|-------|
-| Application name | Specmap (dev) |
-| Homepage URL | `http://localhost:8080` |
-| Authorization callback URL | `http://localhost:8080/api/v1/auth/callback` |
-
-Save the **Client ID** and generate a **Client Secret**.
-
-No installation step is needed — OAuth Apps use the `repo` scope to access repositories the authenticated user has access to.
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```bash
-PORT=8080
-BASE_URL=http://localhost:8080
-
-DATABASE_PATH=./specmap.db
-
-GITHUB_CLIENT_ID=<from step 1>
-GITHUB_CLIENT_SECRET=<from step 1>
-
-SESSION_SECRET=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-
-CORS_ORIGIN=http://localhost:5173
-```
-
-### 3. Start services
-
-Two terminals:
-
-```bash
-# Terminal 1: Python API server
-just serve         # or: just serve-dev (auto-reload)
-
-# Terminal 2: React frontend
-just web-install   # first time only
-just web-dev
-```
-
-### 4. Log in
+### Log in
 
 Open [http://localhost:5173](http://localhost:5173) in your browser. Click "Sign in with GitHub". This redirects through GitHub OAuth and back to the app.
 
-### 5. Browse a PR
+### Browse a PR
 
 After login, the dashboard shows your GitHub repos. Click a repo, then click a PR that has a `.specmap/{branch}.json` file committed.
 
@@ -185,8 +135,4 @@ If the PR has no `.specmap/` file, the annotations section is empty.
 
 ## Troubleshooting
 
-**"CORS error in browser console"** — Check that `CORS_ORIGIN` in `.env` matches the Vite dev server URL exactly (`http://localhost:5173`).
-
-**"Empty annotations on PR page"** — The `.specmap/{branch}.json` file must be committed and pushed to the PR branch. The API fetches it from GitHub at the PR's head SHA.
-
-**"OAuth callback error"** — Verify the callback URL in your GitHub OAuth App settings matches `BASE_URL` + `/api/v1/auth/callback` exactly.
+See the [Development guide troubleshooting section](../development.md#troubleshooting) for common issues with OAuth, CORS, and annotations.
