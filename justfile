@@ -9,7 +9,7 @@ default:
 
 # Install Python dependencies
 mcp-install:
-    cd core && uv sync
+    cd core && uv sync --extra dev
 
 # Run MCP server (stdio mode)
 mcp-run:
