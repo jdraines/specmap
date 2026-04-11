@@ -16,15 +16,15 @@ The foundation: a local-only workflow with no infrastructure dependencies.
 
 ## Phase 2 -- Web UI + GitHub OAuth
 
-**Status: In Progress**
+**Status: Implemented**
 
 A read-only web interface for reviewing PRs with spec annotations.
 
 - **React SPA** -- browse repos, PRs, and diffs with annotation widgets inline; click `[N]` citations to open spec content in a side panel
-- **Go API server** -- REST API backed by PostgreSQL; GitHub OAuth login, JWT sessions, encrypted token storage
+- **Python API server (FastAPI)** -- REST API backed by SQLite; GitHub OAuth login, JWT sessions, encrypted token storage
+- **GitHub OAuth App** -- no GitHub App installation required; uses OAuth `repo` scope for repository access
 - **GitHub Contents API** -- fetches `.specmap/{branch}.json` and spec files from the repo at the PR's head SHA
 - **Mapping cache** -- server-side cache of specmap data keyed by PR + head SHA
-- **Local HTTPS** -- development uses `mkcert` for locally-trusted certificates; session cookies stay `Secure: true` always
 
 ## Phase 3 -- Interactive Review + Comment Sync
 

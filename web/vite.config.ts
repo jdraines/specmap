@@ -7,12 +7,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://localhost:8080',
-        secure: false,
+        target: 'http://localhost:8080',
       },
       '/healthz': {
-        target: 'https://localhost:8080',
-        secure: false,
+        target: 'http://localhost:8080',
       },
     },
   },

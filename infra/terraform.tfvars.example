@@ -1,6 +1,0 @@
-domain_name      = "specmap.example.com"
-route53_zone_id  = "Z0123456789ABCDEFGHIJ"
-github_client_id = "Iv1.xxxxxxxxxxxx"
-github_app_id    = "123456"
-db_password      = "CHANGE_ME_strong_password_here"
-alert_email      = "you@example.com"

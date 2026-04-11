@@ -1,5 +1,0 @@
-DROP TABLE IF EXISTS mapping_cache;
-DROP TABLE IF EXISTS pull_requests;
-DROP TABLE IF EXISTS repositories;
-DROP TABLE IF EXISTS user_tokens;
-DROP TABLE IF EXISTS users;

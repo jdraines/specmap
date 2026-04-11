@@ -37,31 +37,15 @@ mcp-fmt:
 cli-run *ARGS:
     cd core && uv run python -m specmap.cli {{ARGS}}
 
-# --- Go API Server ---
-
-# Build API binary
-api-build:
-    cd api && go build -ldflags "-X main.Version=$(cat VERSION)" -o specmap-api ./cmd/api
+# --- Server ---
 
 # Run API server
-api-run:
-    cd api && go run ./cmd/api
+serve:
+    cd core && uv run specmap serve
 
-# Run Go tests
-api-test *ARGS:
-    cd api && go test ./... {{ARGS}}
-
-# Vet Go code
-api-vet:
-    cd api && go vet ./...
-
-# Start local dev services (Postgres)
-dev-up:
-    docker compose up -d
-
-# Stop local dev services
-dev-down:
-    docker compose down
+# Run API server with auto-reload
+serve-dev:
+    cd core && uv run specmap serve --reload
 
 # --- Web Frontend ---
 
@@ -118,17 +102,11 @@ functional-test-fast *ARGS:
 # Show current versions
 versions:
     @echo "core: $(sed -n 's/^version = \"\(.*\)\"/\1/p' core/pyproject.toml)"
-    @echo "web:  $(cat api/VERSION)"
 
 # Bump core version (updates pyproject.toml)
 core-version VERSION:
     sed -i 's/^version = ".*"/version = "{{VERSION}}"/' core/pyproject.toml
     @echo "core → {{VERSION}}. Tag with: git tag core/v{{VERSION}}"
-
-# Bump web version (updates api/VERSION)
-web-version VERSION:
-    printf '%s\n' '{{VERSION}}' > api/VERSION
-    @echo "web → {{VERSION}}. Tag with: git tag web/v{{VERSION}}"
 
 # --- Deployment ---
 
@@ -136,42 +114,13 @@ web-version VERSION:
 image-build:
     docker build -t specmap:latest .
 
-# Push Docker image to ECR
-image-push:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ECR_URL=$(cd infra && terraform output -raw ecr_repository_url)
-    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$ECR_URL"
-    docker tag specmap:latest "$ECR_URL:latest"
-    docker push "$ECR_URL:latest"
-
-# Build, push, and deploy to ECS
-deploy: image-build image-push
-    #!/usr/bin/env bash
-    set -euo pipefail
-    CLUSTER=$(cd infra && terraform output -raw ecs_cluster_name)
-    SERVICE=$(cd infra && terraform output -raw ecs_service_name)
-    aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --force-new-deployment --region us-east-1
-
-# Initialize Terraform
-infra-init:
-    cd infra && terraform init
-
-# Plan infrastructure changes
-infra-plan:
-    cd infra && terraform plan
-
-# Apply infrastructure changes
-infra-apply:
-    cd infra && terraform apply
-
 # --- Combined ---
 
 # Run all unit tests
-test: mcp-test api-test
+test: mcp-test
 
 # Run all tests including functional
-test-all: mcp-test api-test functional-test
+test-all: mcp-test functional-test
 
 # Run all lints
-lint: mcp-lint api-vet web-typecheck
+lint: mcp-lint web-typecheck

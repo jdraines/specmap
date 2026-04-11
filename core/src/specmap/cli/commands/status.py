@@ -12,9 +12,12 @@ from specmap.state.specmap_file import SpecmapFileManager
 @app.command()
 def status(ctx: typer.Context):
     """Show human-readable annotation summary."""
-    repo_root: str = ctx.obj["repo_root"]
-    branch: str = ctx.obj["branch"]
+    repo_root = ctx.obj["repo_root"]
+    branch = ctx.obj["branch"]
     no_color: bool = ctx.obj["no_color"]
+    if not repo_root or not branch:
+        typer.echo("Error: must be run inside a git repository", err=True)
+        raise typer.Exit(code=1)
     console = get_console(no_color)
 
     mgr = SpecmapFileManager(repo_root)

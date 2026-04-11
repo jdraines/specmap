@@ -7,7 +7,7 @@ Specmap uses **two version groups** that release independently.
 | Group | Components | Source of truth | Git tag |
 |-------|-----------|----------------|---------|
 | **core** | Python library, CLI, MCP server | `core/pyproject.toml` | `core/v0.1.0` |
-| **web** | Go API + React frontend | `api/VERSION` | `web/v0.1.0` |
+| **web** | Python API + React frontend | `core/pyproject.toml` | `web/v0.1.0` |
 
 ### Why two groups?
 

@@ -11,19 +11,16 @@ This is a greenfield project targeting startup viability. Phase 1 (MCP server + 
 ## Architecture Overview
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│   React SPA     │    │   Go API Server  │    │   PostgreSQL     │
-│   (Vite)        │◄──►│   (net/http)     │◄──►│   (RDS)          │
-│   S3+CloudFront │    │   ECS Fargate    │    │                  │
-└─────────────────┘    └──────┬───────────┘    └──────────────────┘
-                              │  ▲
-                    WebSocket │  │ Webhooks
-                              │  │
-                         ┌────▼──┴───┐
-                         │  GitHub   │
-                         │  (App+    │
-                         │   OAuth)  │
-                         └───────────┘
+┌─────────────────┐    ┌──────────────────────────┐    ┌──────────────────┐
+│   React SPA     │    │   Python API Server      │    │   SQLite         │
+│   (Vite)        │◄──►│   (FastAPI / Uvicorn)    │◄──►│                  │
+│                 │    │                          │    │                  │
+└─────────────────┘    └──────────┬───────────────┘    └──────────────────┘
+                                  │
+                             ┌────▼─────┐
+                             │  GitHub  │
+                             │  (OAuth) │
+                             └──────────┘
 
 ┌──────────────────────────────────────────────────────┐
 │   Local Developer Machine                            │
@@ -61,9 +58,7 @@ specmap/
 ├── SPEC.md
 ├── .gitignore
 ├── justfile                          # Task runner
-├── docker-compose.yml                # Local dev (Postgres, etc.)
-│
-├── core/                             # Python: core library, MCP server, CLI
+├── core/                             # Python: core library, MCP server, CLI, API server
 │   ├── pyproject.toml                # uv; deps: mcp, litellm, pydantic, unidiff, typer
 │   ├── src/specmap/                  # Shared core library
 │   │   ├── config.py                 # BYOK config loading (env vars, .specmap/config.json)
@@ -93,51 +88,24 @@ specmap/
 │   │       ├── output.py             # Rich console helpers
 │   │       └── commands/
 │   │           ├── validate.py       # Line range validity check
-│   │           └── status.py         # Human-readable annotation summary
+│   │           ├── status.py         # Human-readable annotation summary
+│   │           └── serve.py          # API server entrypoint
+│   │       └── server/               # FastAPI server (Phase 2)
+│   │           ├── config.py         # Env-based config (port, DB, OAuth, CORS)
+│   │           ├── app.py            # FastAPI app factory, route registration, CORS
+│   │           ├── auth.py           # OAuth, JWT, AES-256-GCM encryption
+│   │           ├── github.py         # GitHub API client (repos, PRs, contents)
+│   │           ├── db.py             # SQLite access (aiosqlite), migrations
+│   │           ├── models.py         # Domain types
+│   │           └── spa.py            # SPA static file handler with index.html fallback
 │   └── tests/                        # Unit tests (pytest)
 │
-├── api/                              # Go API server (Phase 2)
-│   ├── go.mod
-│   ├── cmd/api/main.go               # Server entrypoint
-│   ├── migrations/                   # SQL migration files (embedded)
-│   │   ├── 001_initial.up.sql        # Users, tokens, repos, PRs, mapping_cache
-│   │   └── 002_drop_spec_coverage.up.sql
-│   └── internal/
-│       ├── config/config.go          # Env-based config (port, DB, OAuth, CORS, TLS)
-│       ├── models/models.go          # Domain types (mirrors Python SpecmapFile v2)
-│       ├── server/
-│       │   ├── server.go             # Route registration, CORS, handler wiring
-│       │   ├── middleware.go         # JWT auth, request logging, CORS
-│       │   ├── helpers.go            # Token decryption, JSON response helpers
-│       │   ├── github.go             # GitHubAPI interface (for test mocking)
-│       │   ├── spa.go                # SPA static file handler with index.html fallback
-│       │   ├── handlers_auth.go      # Login, callback, logout, me
-│       │   ├── handlers_repos.go     # List/get repos (fetch from GitHub, upsert in DB)
-│       │   ├── handlers_pulls.go     # List/get PRs, list PR files
-│       │   ├── handlers_annotations.go # GET annotations (cache or fetch .specmap/ from GitHub)
-│       │   └── handlers_specs.go     # GET spec content (fetch from GitHub at head SHA)
-│       ├── auth/
-│       │   ├── oauth.go              # OAuth state/session cookies
-│       │   ├── jwt.go                # JWT creation/validation (1hr expiry)
-│       │   └── crypto.go             # AES-256-GCM encryption/decryption
-│       ├── github/
-│       │   ├── client.go             # OAuth token exchange, user profile
-│       │   ├── repos.go              # ListRepos, GetRepo
-│       │   ├── pulls.go              # ListPulls, GetPull, ListPullFiles
-│       │   └── contents.go           # GetFileContent (Contents API, base64 decode)
-│       └── store/
-│           ├── store.go              # pgx pool, migration runner
-│           ├── users.go              # UpsertUser, GetUserByID, UpsertToken, GetToken
-│           ├── repos.go              # UpsertRepo, GetRepoByFullName
-│           ├── pulls.go              # UpsertPull, ListPullsByRepo, GetPull
-│           └── mapping_cache.go      # GetMappingCache, UpsertMappingCache
-│
-├── web/                              # React frontend (Phase 2)
-│   ├── vite.config.ts                # Vite + React + Tailwind, proxy /api to Go server
+├── web/                              # React frontend
+│   ├── vite.config.ts                # Vite + React + Tailwind, proxy /api to Python server
 │   ├── index.html
 │   └── src/
 │       ├── api/                      # TypeScript API client
-│       │   ├── types.ts              # Interfaces mirroring Go models
+│       │   ├── types.ts              # Interfaces mirroring API models
 │       │   ├── client.ts             # Fetch wrapper (credentials, 401 redirect)
 │       │   └── endpoints.ts          # Typed functions for each API endpoint
 │       ├── stores/                   # Zustand state management
@@ -250,20 +218,20 @@ Verify existing annotations are still valid.
 
 ---
 
-## PostgreSQL Schema (Phase 2)
+## SQLite Schema (Phase 2)
 
-**Implemented tables:**
+**Implemented tables** (same structure, SQLite types):
 - `users` -- specmap identity (linked via `github_id`)
 - `user_tokens` -- OAuth tokens, AES-256-GCM encrypted at application level
 - `repositories` -- GitHub repos the user has access to
 - `pull_requests` -- cached PR metadata (repo, number, title, state, branches, head SHA)
-- `mapping_cache` -- server-side cache of `.specmap/` data (JSONB) keyed by PR + head SHA
+- `mapping_cache` -- server-side cache of `.specmap/` data (JSON) keyed by PR + head SHA
 
 ---
 
 ## API Design (Phase 2)
 
-**Implemented REST endpoints (Go, `/api/v1`):**
+**Implemented REST endpoints (Python/FastAPI, `/api/v1`):**
 
 | Group | Endpoints | Auth |
 |-------|-----------|------|
@@ -283,11 +251,11 @@ Verify existing annotations are still valid.
 
 | Component | Choice | Why |
 |-----------|--------|-----|
-| Go HTTP | `net/http` (1.22+) | User preference; 1.22 pattern routing eliminates need for external router |
-| Go WebSocket | `nhooyr.io/websocket` | Modern, context-aware, lighter than gorilla |
-| Go DB driver | `jackc/pgx/v5` | High-performance Postgres, native types, pooling |
-| Go migrations | `golang-migrate/migrate` + embedded SQL | Simple, file-based |
-| Go GitHub client | Raw `net/http` | Minimal deps, only a few endpoints needed |
+| Python API | `FastAPI` | Async, automatic OpenAPI docs, Pydantic integration |
+| Python server | `uvicorn` | ASGI server, fast, supports auto-reload |
+| Python HTTP client | `httpx` | Async HTTP client for GitHub API calls |
+| Python auth | `PyJWT` + `cryptography` | JWT sessions, AES-256-GCM token encryption |
+| Python DB | `aiosqlite` | Async SQLite access |
 | Python CLI | `typer` (Typer >= 0.12, bundles Rich) | Click-based, auto-generates help, Rich output |
 | Python MCP | `modelcontextprotocol/python-sdk` | Official SDK |
 | Python LLM | `litellm` | BYOK across 100+ providers |
@@ -303,31 +271,21 @@ Verify existing annotations are still valid.
 
 ## Security
 
-- **OAuth**: GitHub App-based OAuth flow. State parameter in encrypted HttpOnly cookie. Session as short-lived JWT (1hr) in HttpOnly/Secure/SameSite=Lax cookie.
-- **Token storage**: AES-256-GCM encryption at application level, key from AWS Secrets Manager.
+- **OAuth**: GitHub OAuth App flow. State parameter in encrypted HttpOnly cookie. Session as short-lived JWT (1hr) in HttpOnly/Secure/SameSite=Lax cookie.
+- **Token storage**: AES-256-GCM encryption at application level, key from `ENCRYPTION_KEY` env var.
 - **BYOK keys**: Local only in Phase 1 (never leave user's machine). MCP server warns if API key appears in tracked files. `.specmap/config.json` added to `.gitignore` template.
-- **Webhook verification**: HMAC-SHA256 signature check on every webhook. Reject + log failures.
-- **Permission intersection**: User must have both specmap team membership AND GitHub repo access. GitHub access verified via user's OAuth token, cached 5min.
-- **Echo loop prevention**: Comment sync skips comments authored by the GitHub App bot.
-- **Rate limiting**: Per-user token bucket on API endpoints.
 - **No secrets in `.specmap/`**: Design invariant -- only annotations, references, and metadata, never API keys or credentials.
 
 ---
 
-## Deployment (AWS + Terraform)
+## Deployment
 
-**Demo (~$25-35/mo):**
-- Frontend: S3 + CloudFront (pennies)
-- Go API: ECS Fargate, 1 task (0.25 vCPU, 0.5GB RAM) ~$9/mo
-- Python LLM: Lambda (pay-per-invocation) -- near-zero at demo scale
-- Postgres: RDS `db.t4g.micro` ~$13/mo
-- WebSockets: Within Go Fargate task
+Self-hosted. Single process: `specmap serve`. SQLite database. Docker optional.
 
-**Scale path:**
-- Fargate: add tasks horizontally
-- Lambda -> Fargate if cold starts matter
-- RDS -> Aurora Serverless v2
-- Add ElastiCache/Redis for rate limiting + caching
+- **Single binary**: Python API server with embedded React frontend
+- **Docker**: `docker build -t specmap . && docker run` with env vars
+- **TLS**: handled by a reverse proxy (nginx, caddy) in front of the application
+- **SQLite**: all state in a single file, WAL mode for concurrent reads, backup = copy the file
 
 ---
 
@@ -354,13 +312,13 @@ A developer adds the MCP server to their coding agent, annotations are generated
 13. `core/src/specmap/mcp/server.py` -- MCP server registration (2 tools)
 14. `core/src/specmap/cli/` -- Typer CLI (validate, status commands)
 
-### Phase 2: Web UI (read-only) + GitHub OAuth -- IN PROGRESS
-Go API server with GitHub OAuth, JWT sessions, encrypted token storage, PostgreSQL schema, and GitHub API integration for repos/PRs/files. React SPA with Vite + Tailwind: dashboard, repo page, PR review page with diff viewer + annotation widgets + spec side panel. Reviewer logs in with GitHub, selects a repo and PR, and sees the diff with specmap annotations inline. Clicking a `[N]` citation opens the spec content in a side panel.
+### Phase 2: Web UI (read-only) + GitHub OAuth -- COMPLETE
+Python FastAPI server with GitHub OAuth, JWT sessions, encrypted token storage, SQLite schema, and GitHub API integration for repos/PRs/files. React SPA with Vite + Tailwind: dashboard, repo page, PR review page with diff viewer + annotation widgets + spec side panel. Reviewer logs in with GitHub, selects a repo and PR, and sees the diff with specmap annotations inline. Clicking a `[N]` citation opens the spec content in a side panel.
 
 **Implemented:**
-- Go API: OAuth login, JWT sessions, encrypted token storage, Postgres schema, repo/PR/files endpoints, annotations endpoint (fetch/cache .specmap/ from GitHub), spec content endpoint, CORS middleware, TLS support
+- Python API: FastAPI + uvicorn, OAuth login, JWT sessions, encrypted token storage, SQLite schema, repo/PR/files endpoints, annotations endpoint (fetch/cache .specmap/ from GitHub), spec content endpoint, CORS middleware
 - React: Vite scaffold, Tailwind CSS, API client layer, Zustand stores (auth, review, spec panel), router, pages (login, dashboard, repo, PR review), diff viewer (react-diff-view + gitdiff-parser), annotation widgets with [N] citation badges, spec panel with markdown rendering
-- Build: justfile commands for web-install, web-dev, web-build, web-typecheck; lint includes tsc
+- Build: justfile commands for serve, serve-dev, web-install, web-dev, web-build, web-typecheck; lint includes tsc
 
 ### Phase 3: Interactive review
 Bidirectional comment sync, approvals, GitHub App webhooks, WebSocket real-time updates.
@@ -379,8 +337,7 @@ LLM-generated specs for unmapped code, GitHub Action for CI coverage gates, adva
 - **CI commands**: `just test` (unit), `just test-all` (unit + functional), `just lint` (ruff)
 - **Manual E2E**: Configure MCP server in Claude Code, run a coding session, verify `.specmap/` file is created correctly, run `specmap validate`
 
-### Phase 2 testing (IN PROGRESS):
-- Go API: handler tests with `httptest` and mock `GitHubAPI` interface (`just api-test`)
+### Phase 2 testing:
 - TypeScript: type checking via `npx tsc --noEmit` (`just web-typecheck`)
-- Combined: `just lint` runs ruff + go vet + tsc
-- CI pipeline: `just test` (Python unit + Go), `just lint` (all linters)
+- Combined: `just lint` runs ruff + tsc
+- CI pipeline: `just test` (Python unit), `just lint` (all linters)
