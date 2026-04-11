@@ -1,13 +1,80 @@
 # Development
 
-This page covers how to set up a development environment, run the test suites, and understand the project structure.
+Everything you need to clone and run specmap locally.
 
 ## Prerequisites
 
-- **Python 3.11+** with [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- **Node.js 20+** with npm
-- **git**
-- [just](https://github.com/casey/just) (recommended -- all commands below have `just` equivalents)
+| Tool | Purpose | Install |
+|------|---------|---------|
+| Python 3.11+ | Core library, MCP server, CLI, API server | System package manager |
+| [uv](https://docs.astral.sh/uv/) | Python package manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node.js 20+ | React frontend | System package manager |
+| [just](https://github.com/casey/just) | Task runner | `cargo install just` or [system packages](https://github.com/casey/just#installation) |
+| git | Version control | System package manager |
+
+## Clone and Install
+
+```bash
+git clone https://github.com/jdraines/specmap.git
+cd specmap
+just mcp-install     # Python deps (core library + MCP server + CLI + API server + test deps)
+just web-install     # Node deps (React frontend)
+```
+
+## Running the Web UI
+
+The web UI requires a GitHub OAuth App so the server can fetch repo data on your behalf.
+
+### 1. Create a GitHub OAuth App
+
+Go to [github.com/settings/developers](https://github.com/settings/developers) > **OAuth Apps** > **New OAuth App**:
+
+| Field | Value |
+|-------|-------|
+| Application name | Specmap (dev) |
+| Homepage URL | `http://localhost:8080` |
+| Authorization callback URL | `http://localhost:8080/api/v1/auth/callback` |
+
+Save the **Client ID** and generate a **Client Secret**.
+
+No installation step is needed -- OAuth Apps use the `repo` scope to access repositories the authenticated user has access to.
+
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+PORT=8080
+BASE_URL=http://localhost:8080
+
+DATABASE_PATH=./specmap.db
+
+GITHUB_CLIENT_ID=<from step 1>
+GITHUB_CLIENT_SECRET=<from step 1>
+
+SESSION_SECRET=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+
+CORS_ORIGIN=http://localhost:5173
+```
+
+### 3. Start services
+
+Two terminals:
+
+```bash
+# Terminal 1: Python API server
+just serve         # or: just serve-dev (auto-reload)
+
+# Terminal 2: React frontend
+just web-dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) and click "Sign in with GitHub".
 
 ## Project Structure
 
@@ -41,15 +108,7 @@ specmap/
 └── mkdocs.yml
 ```
 
-## Installing Dependencies
-
-```bash
-just mcp-install   # Python deps (core library + MCP server + CLI + test deps)
-```
-
 ## Running Tests
-
-Specmap has two test layers:
 
 ### Unit Tests
 
@@ -83,6 +142,25 @@ The functional tests create temporary git repos, mock `litellm.acompletion`, cal
 ```bash
 just test       # Unit tests only
 just test-all   # Unit + functional tests
+```
+
+## Linting and Formatting
+
+```bash
+just mcp-lint      # ruff check
+just mcp-fmt       # ruff format
+just web-typecheck # tsc --noEmit
+just lint          # All lints (ruff + tsc)
+```
+
+## Documentation
+
+Docs use [MkDocs Material](https://squidfunnel.com/mkdocs-material/) with mike for versioning.
+
+```bash
+just docs-install   # One-time: install mkdocs into docs/.venv
+just docs-serve     # Live-reload dev server at localhost:8000
+just docs-build     # Build static site (strict mode)
 ```
 
 ## Functional Test Architecture
@@ -139,53 +217,10 @@ def setup_spec_on_main(repo, spec_path, content):
     repo.git_merge("main")
 ```
 
-## API Server
+## Troubleshooting
 
-### Setup
+**"CORS error in browser console"** -- Check that `CORS_ORIGIN` in `.env` matches the Vite dev server URL exactly (`http://localhost:5173`).
 
-```bash
-# Copy .env.example to .env and fill in GitHub OAuth credentials
-cp .env.example .env
+**"Empty annotations on PR page"** -- The `.specmap/{branch}.json` file must be committed and pushed to the PR branch. The API fetches it from GitHub at the PR's head SHA.
 
-# Run the API server
-just serve
-
-# Or with auto-reload for development
-just serve-dev
-```
-
-The server runs on `http://localhost:8080` by default. See [Local Development](getting-started/local-dev.md) for full setup instructions including GitHub OAuth App configuration.
-
-## React Frontend
-
-### Setup
-
-```bash
-just web-install   # Install npm dependencies
-just web-dev       # Start Vite dev server (proxies /api to Python server)
-```
-
-### Type Checking
-
-```bash
-just web-typecheck   # TypeScript type check (no emit)
-```
-
-## Linting and Formatting
-
-```bash
-just mcp-lint      # ruff check
-just mcp-fmt       # ruff format
-just web-typecheck # tsc --noEmit
-just lint          # All lints (ruff + tsc)
-```
-
-## Documentation
-
-Docs use [MkDocs Material](https://squidfunnel.com/mkdocs-material/) with mike for versioning.
-
-```bash
-just docs-install   # One-time: install mkdocs into docs/.venv
-just docs-serve     # Live-reload dev server at localhost:8000
-just docs-build     # Build static site (strict mode)
-```
+**"OAuth callback error"** -- Verify the callback URL in your GitHub OAuth App settings matches `BASE_URL` + `/api/v1/auth/callback` exactly.
