@@ -16,18 +16,18 @@ app = typer.Typer(
 )
 
 
-def _detect_repo_root() -> str:
-    """Walk up from cwd looking for .git/."""
+def _detect_repo_root() -> str | None:
+    """Walk up from cwd looking for .git/. Returns None if not in a repo."""
     current = Path.cwd()
     while current != current.parent:
         if (current / ".git").exists():
             return str(current)
         current = current.parent
-    raise typer.Exit(code=1)
+    return None
 
 
-def _detect_branch(repo_root: str) -> str:
-    """Get current branch from git."""
+def _detect_branch(repo_root: str) -> str | None:
+    """Get current branch from git. Returns None on failure."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -41,7 +41,7 @@ def _detect_branch(repo_root: str) -> str:
                 return branch
     except FileNotFoundError:
         pass
-    raise typer.Exit(code=1)
+    return None
 
 
 def _version_callback(value: bool):
@@ -62,9 +62,9 @@ def main(
     ctx.ensure_object(dict)
     resolved_root = repo_root or _detect_repo_root()
     ctx.obj["repo_root"] = resolved_root
-    ctx.obj["branch"] = branch or _detect_branch(resolved_root)
+    ctx.obj["branch"] = branch or (_detect_branch(resolved_root) if resolved_root else None)
     ctx.obj["no_color"] = no_color
 
 
 # Register subcommands by importing the command modules.
-from specmap.cli.commands import validate, status  # noqa: E402, F401
+from specmap.cli.commands import validate, status, serve  # noqa: E402, F401

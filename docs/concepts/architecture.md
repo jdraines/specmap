@@ -63,7 +63,7 @@ graph TB
 **Deterministic CLI**
 : The CLI makes no network calls and no LLM calls. Its output is fully deterministic given the same inputs, making it reliable for CI.
 
-## Phase 2 Architecture (In Progress)
+## Phase 2 Architecture
 
 ```mermaid
 graph TB
@@ -75,8 +75,8 @@ graph TB
 
     subgraph "Specmap Server"
         Web[React SPA]
-        API[Go API<br/>:8080]
-        DB[(PostgreSQL)]
+        API[Python API<br/>FastAPI :8080]
+        DB[(SQLite)]
     end
 
     subgraph "GitHub"
@@ -104,6 +104,6 @@ UI capabilities:
 - **Hover cross-highlighting** — hovering an annotation highlights its code lines and vice versa
 - **File-source API** — `GET /api/v1/repos/{owner}/{repo}/pulls/{number}/file-source?path=...` returns raw file content for hunk expansion
 
-The Go API server fetches `.specmap/{branch}.json` from the repo via the GitHub Contents API and caches the result in PostgreSQL. Spec file content is fetched on demand when a reviewer opens a citation.
+The API server fetches `.specmap/{branch}.json` from the repo via the GitHub Contents API and caches the result in SQLite. Spec file content is fetched on demand when a reviewer opens a citation.
 
 See [Roadmap](../roadmap.md) for the full phased delivery plan.

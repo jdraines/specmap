@@ -5,38 +5,26 @@ This page covers how to set up a development environment, run the test suites, a
 ## Prerequisites
 
 - **Python 3.11+** with [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- **Go 1.25+**
 - **Node.js 20+** with npm
-- **PostgreSQL 15+** (via Docker Compose)
 - **git**
 - [just](https://github.com/casey/just) (recommended -- all commands below have `just` equivalents)
-- [mkcert](https://github.com/FiloSottile/mkcert) (for local HTTPS)
 
 ## Project Structure
 
 ```
 specmap/
-├── core/                  # Python: core library, MCP server, CLI
+├── core/                  # Python: core library, MCP server, CLI, API server
 │   ├── src/specmap/       # Source code
 │   │   ├── indexer/       # Diff analysis, annotation engine, diff optimizer
 │   │   ├── state/         # Models, specmap file I/O
 │   │   ├── llm/           # LLM client, prompts, schemas
 │   │   ├── tools/         # MCP tool implementations
 │   │   ├── mcp/           # MCP server entrypoint
-│   │   └── cli/           # Typer CLI entrypoint + commands
+│   │   ├── cli/           # Typer CLI entrypoint + commands
+│   │   └── server/        # FastAPI server (auth, GitHub API, SQLite)
 │   ├── tests/             # Unit tests (pytest)
 │   └── pyproject.toml
-├── api/                   # Go API server (Phase 2)
-│   ├── cmd/api/           # Server entrypoint
-│   ├── internal/
-│   │   ├── config/        # Environment-based configuration
-│   │   ├── models/        # Domain types
-│   │   ├── server/        # HTTP handlers, middleware, routing
-│   │   ├── auth/          # OAuth, JWT, encryption
-│   │   ├── github/        # GitHub API client
-│   │   └── store/         # PostgreSQL access (pgx)
-│   └── migrations/        # SQL migrations
-├── web/                   # React frontend (Phase 2)
+├── web/                   # React frontend
 │   ├── src/
 │   │   ├── api/           # TypeScript API client
 │   │   ├── stores/        # Zustand state management
@@ -151,31 +139,22 @@ def setup_spec_on_main(repo, spec_path, content):
     repo.git_merge("main")
 ```
 
-## Go API Server
+## API Server
 
 ### Setup
 
 ```bash
-# Start PostgreSQL
-just dev-up
-
-# Create local HTTPS certificates (one time)
-mkcert -install
-mkcert localhost 127.0.0.1 ::1
-
 # Copy .env.example to .env and fill in GitHub OAuth credentials
 cp .env.example .env
 
 # Run the API server
-just api-run
+just serve
+
+# Or with auto-reload for development
+just serve-dev
 ```
 
-### Tests
-
-```bash
-just api-test     # Run Go tests
-just api-vet      # Go vet
-```
+The server runs on `http://localhost:8080` by default. See [Local Development](getting-started/local-dev.md) for full setup instructions including GitHub OAuth App configuration.
 
 ## React Frontend
 
@@ -183,7 +162,7 @@ just api-vet      # Go vet
 
 ```bash
 just web-install   # Install npm dependencies
-just web-dev       # Start Vite dev server (proxies /api to Go server)
+just web-dev       # Start Vite dev server (proxies /api to Python server)
 ```
 
 ### Type Checking
@@ -197,9 +176,8 @@ just web-typecheck   # TypeScript type check (no emit)
 ```bash
 just mcp-lint      # ruff check
 just mcp-fmt       # ruff format
-just api-vet       # go vet
 just web-typecheck # tsc --noEmit
-just lint          # All lints
+just lint          # All lints (ruff + tsc)
 ```
 
 ## Documentation

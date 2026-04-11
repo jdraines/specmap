@@ -1,143 +1,151 @@
 # Production Deployment
 
-This guide covers deploying specmap for general use — where arbitrary users and organizations install the GitHub App and the server runs on a public URL.
+This guide covers self-hosting specmap for your team — a single process serving the API and frontend, backed by SQLite.
 
 ## Architecture
 
-Production specmap operates in two modes simultaneously:
-
 ```
-Pull-based (user requests)              Push-based (webhooks)
-──────────────────────────              ──────────────────────
-Browser                                 GitHub
-    │                                       │
-    ▼                                       ▼
-Vite / Static Build                     POST /api/v1/webhooks/github
-    │                                       │ HMAC verification
-    ▼                                       ▼
-Go API Server ◄──── OAuth (user) ────►  Go API Server ◄──── App JWT ────► GitHub API
-    │                                       │
-    ▼                                       ▼
-PostgreSQL                              PostgreSQL
+                    ┌──────────────────────────┐
+Browser ──────────► │  Reverse Proxy           │
+                    │  (nginx / caddy)         │
+                    │  TLS termination         │
+                    └────────────┬─────────────┘
+                                 │ HTTP
+                    ┌────────────▼─────────────┐
+                    │  specmap serve            │
+                    │  Python (FastAPI/Uvicorn) │
+                    │  Embedded React SPA       │
+                    │  SQLite (specmap.db)      │
+                    └────────────┬─────────────┘
+                                 │
+                    ┌────────────▼─────────────┐
+                    │  GitHub API               │
+                    │  OAuth + Contents API     │
+                    └──────────────────────────┘
 ```
 
-- **Pull-based**: Users log in via OAuth, browse repos and PRs. The server uses their OAuth token to call GitHub APIs on their behalf.
-- **Push-based**: GitHub sends webhook events when users install/uninstall the App or change repo access. The server verifies the HMAC signature and updates its installation records.
+- **Single process**: `specmap serve` runs the API server with the React frontend embedded (when built with `--static-dir`)
+- **SQLite**: all state (users, tokens, cached PR data) stored in a single file
+- **No webhooks**: the server fetches data from GitHub on demand via the Contents API
+- **TLS**: handled by a reverse proxy in front of the application
 
-## GitHub App Setup
+## GitHub OAuth App Setup
 
-### Differences from Local Dev
-
-| Setting | Local Dev | Production |
-|---------|-----------|------------|
-| Who can install | Only on this account | **Any account** |
-| Webhook | Inactive | **Active** — pointed at your server |
-| Webhook secret | Not set | **Required** — HMAC verification |
-| Private key | Not needed | **Required** — for App-level API calls |
-
-### Creating the App
-
-Go to [github.com/settings/apps/new](https://github.com/settings/apps/new):
+Go to [github.com/settings/developers](https://github.com/settings/developers) → **OAuth Apps** → **New OAuth App**:
 
 | Field | Value |
 |-------|-------|
-| GitHub App name | Specmap |
-| Homepage URL | Your production URL |
-| Callback URL | `https://your-domain.com/api/v1/auth/callback` |
-| Setup URL (optional) | `https://your-domain.com` (where users land after installing) |
-| Request user authorization (OAuth) during installation | Checked |
-| Webhook URL | `https://your-domain.com/api/v1/webhooks/github` |
-| Webhook secret | A random string (save this for `GITHUB_WEBHOOK_SECRET`) |
-| Webhook Active | Checked |
+| Application name | Specmap |
+| Homepage URL | `https://your-domain.com` |
+| Authorization callback URL | `https://your-domain.com/api/v1/auth/callback` |
 
-### Permissions
+Save the **Client ID** and generate a **Client Secret**.
 
-Same as local dev — all read-only:
-
-| Permission | Access |
-|------------|--------|
-| Contents | Read-only |
-| Pull requests | Read-only |
-| Metadata | Read-only |
-
-### Webhook Event Subscriptions
-
-Subscribe to these events:
-
-| Event | Purpose |
-|-------|---------|
-| `Installation` | Track when users install/uninstall the App |
-| `Installation repositories` | Track when users change repo access |
-
-### Private Key
-
-After creating the App, generate a private key:
-
-1. Go to your App settings > General > Private keys
-2. Click "Generate a private key"
-3. Save the downloaded `.pem` file securely on your server
-
-### Where Can This App Be Installed?
-
-Select **Any account** so that other users and organizations can install it. An org admin must approve the installation for organization accounts.
+No installation step is needed — OAuth Apps use the `repo` scope to access repositories the authenticated user has access to.
 
 ## Environment Variables
 
-All environment variables from [local dev](../getting-started/local-dev.md) apply, plus these three for production features:
-
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GITHUB_APP_ID` | For app auth | The App ID from your GitHub App settings page |
-| `GITHUB_PRIVATE_KEY_PATH` | For app auth | Path to the `.pem` private key file |
-| `GITHUB_WEBHOOK_SECRET` | For webhooks | The secret you set in the GitHub App webhook configuration |
-
-App-level authentication activates when both `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH` are set. The webhook endpoint activates when `GITHUB_WEBHOOK_SECRET` is set. Both are independent — you can enable one without the other.
+| `PORT` | No | Port to listen on (default: `8080`) |
+| `HOST` | No | Host to bind to (default: `0.0.0.0`) |
+| `BASE_URL` | Yes | Public URL of the server (e.g., `https://specmap.example.com`) |
+| `DATABASE_PATH` | No | Path to SQLite database file (default: `./specmap.db`) |
+| `GITHUB_CLIENT_ID` | Yes | OAuth App Client ID |
+| `GITHUB_CLIENT_SECRET` | Yes | OAuth App Client Secret |
+| `SESSION_SECRET` | Yes | Random string, 32+ characters (`openssl rand -hex 32`) |
+| `ENCRYPTION_KEY` | Yes | 32 bytes hex-encoded for AES-256-GCM token encryption (`openssl rand -hex 32`) |
+| `CORS_ORIGIN` | No | Set only if frontend is served from a different origin |
+| `FRONTEND_URL` | No | Where to redirect after OAuth login (defaults to `CORS_ORIGIN` or `BASE_URL`) |
+| `STATIC_DIR` | No | Directory with built frontend files (for embedded SPA mode) |
 
 ### Example `.env`
 
 ```bash
-# Server
 PORT=8080
 BASE_URL=https://specmap.example.com
 
-# Database
-DATABASE_URL=postgres://specmap:$PASSWORD@db-host:5432/specmap?sslmode=require
+DATABASE_PATH=/data/specmap.db
 
-# GitHub OAuth
 GITHUB_CLIENT_ID=Iv1.abc123
 GITHUB_CLIENT_SECRET=secret123
 
-# Session & encryption
 SESSION_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
-
-# GitHub App (production)
-GITHUB_APP_ID=12345
-GITHUB_PRIVATE_KEY_PATH=/etc/specmap/private-key.pem
-GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
-
-# CORS (set to your frontend URL, or omit if serving from same origin)
-CORS_ORIGIN=https://specmap.example.com
-
-# TLS (if terminating TLS at the app level; omit if behind a reverse proxy)
-# TLS_CERT=/etc/specmap/cert.pem
-# TLS_KEY=/etc/specmap/key.pem
 ```
 
-## Installation Flow for End Users
+## Docker Deployment
 
-When someone clicks "Install" on the GitHub App page:
+Build and run with Docker:
 
-1. GitHub shows the installation consent screen listing requested permissions
-2. The user selects "All repositories" or specific repos, then clicks Install
-3. GitHub sends an `installation` webhook event (`action: created`) to your server
-4. The server upserts an installation record in the database
-5. If "Request user authorization during installation" is checked, GitHub redirects the user through the OAuth flow, landing them on your Setup URL
+```bash
+docker build -t specmap:latest .
 
-## Local Dev Compatibility
+docker run -d \
+  --name specmap \
+  -p 8080:8080 \
+  -v specmap-data:/data \
+  -e BASE_URL=https://specmap.example.com \
+  -e DATABASE_PATH=/data/specmap.db \
+  -e GITHUB_CLIENT_ID=Iv1.abc123 \
+  -e GITHUB_CLIENT_SECRET=secret123 \
+  -e SESSION_SECRET=$(openssl rand -hex 32) \
+  -e ENCRYPTION_KEY=$(openssl rand -hex 32) \
+  specmap:latest
+```
 
-All production features are opt-in. When `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY_PATH`, and `GITHUB_WEBHOOK_SECRET` are not set:
+The Docker image bundles the Python API server with the built React frontend. It runs `specmap serve --static-dir /app/static` to serve both from a single process.
 
-- No App-level authentication is configured (`appAuth` is nil)
-- The webhook endpoint is not registered (returns 404)
-- Everything else works exactly as in local dev
+## Reverse Proxy
+
+Put a reverse proxy in front for TLS termination. Example with Caddy:
+
+```
+specmap.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+Example with nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name specmap.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/specmap.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/specmap.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+When `BASE_URL` starts with `https://`, the server sets `Secure` on session cookies, so TLS termination at the proxy is required.
+
+## SQLite Considerations
+
+- **Single-writer**: SQLite uses a single-writer model. This is fine for typical specmap workloads (read-heavy, writes are infrequent token/cache upserts).
+- **WAL mode**: The server enables WAL mode for better concurrent read performance.
+- **Backup**: Copy the `.db` file (and `.db-wal`, `.db-shm` if they exist) while the server is running, or stop the server first for a clean copy.
+- **Scaling**: For most teams, a single SQLite database is sufficient. If you need horizontal scaling, consider putting a shared filesystem or switching to PostgreSQL (not currently supported out of the box).
+
+## Without Docker
+
+You can also run specmap directly:
+
+```bash
+# Install
+uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
+
+# Build frontend
+cd web && npm ci && npm run build && cd ..
+
+# Run with embedded frontend
+specmap serve --static-dir web/dist
+```

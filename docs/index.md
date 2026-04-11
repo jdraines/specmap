@@ -6,7 +6,7 @@ Specmap solves a fundamental problem with AI-assisted development: when an agent
 
 ## How It Works
 
-The **MCP server** integrates with your coding agent (e.g., Claude Code) to automatically annotate code changes with spec references as you work. The **CLI** validates those annotations in CI. The **web UI** lets reviewers browse PRs with spec annotations overlaid on diffs.
+The **MCP server** integrates with your coding agent (e.g., Claude Code) to automatically annotate code changes with spec references as you work. The **CLI** validates those annotations in CI. Run `specmap serve` to launch the **web UI**, where reviewers browse PRs with spec annotations overlaid on diffs.
 
 ```mermaid
 graph LR

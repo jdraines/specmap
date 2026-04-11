@@ -6,9 +6,6 @@ dist/
 .venv/
 .eggs/
 
-# Go
-api/specmap-api
-
 # IDE
 .idea/
 .vscode/
@@ -38,17 +35,12 @@ tests/**/__pycache__/
 docs/.venv/
 site/
 
-# Node (web/ phase 2+)
+# Node (web frontend)
 node_modules/
 web/dist/
-api/web/dist/
 
-# Embedded frontend build artifacts
-api/cmd/api/static/*
-!api/cmd/api/static/.gitkeep
+# SQLite database
+*.db
 
-# Terraform
-infra/.terraform/
-infra/*.tfstate*
-infra/.terraform.lock.hcl
-infra/terraform.tfvars
+# Server static files (built frontend)
+core/src/specmap/server/static/
