@@ -19,7 +19,7 @@ function ProgressDisplay() {
 
   let text = progress.detail ?? '';
   if (progress.phase === 'annotating' && progress.batch != null && progress.total_batches != null) {
-    text = `Annotating batch ${progress.batch}/${progress.total_batches}...`;
+    text = `Completed ${progress.batch}/${progress.total_batches} batches...`;
   } else if (progress.phase === 'cloning') {
     text = 'Cloning repository...';
   } else if (progress.phase === 'context') {
