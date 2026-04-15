@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react';
 import { parseDiff } from 'react-diff-view';
-import type { PullFile, Annotation } from '../../api/types';
+import type { PullFile, Annotation, WalkthroughStep } from '../../api/types';
 import { DiffFile } from './DiffFile';
+import { WalkthroughStepCard } from '../walkthrough/WalkthroughStepCard';
 import 'react-diff-view/style/index.css';
 
 interface DiffViewerProps {
   files: PullFile[];
   annotationsByFile: Map<string, Annotation[]>;
   mode: 'inline' | 'side';
+  walkthroughStep?: WalkthroughStep | null;
+  walkthroughTotalSteps?: number;
 }
 
 function isSpecmapFile(filename: string): boolean {
@@ -47,7 +50,7 @@ function renderFile(file: PullFile, annotationsByFile: Map<string, Annotation[]>
   );
 }
 
-export function DiffViewer({ files, annotationsByFile, mode }: DiffViewerProps) {
+export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, walkthroughTotalSteps }: DiffViewerProps) {
   const [showSpecmap, setShowSpecmap] = useState(false);
 
   const { regularFiles, specmapFiles } = useMemo(() => {
@@ -87,9 +90,14 @@ export function DiffViewer({ files, annotationsByFile, mode }: DiffViewerProps) 
         specmapFiles.map((file, i) =>
           renderFile(file, annotationsByFile, mode, i),
         )}
-      {regularFiles.map((file, index) =>
-        renderFile(file, annotationsByFile, mode, specmapFiles.length + index),
-      )}
+      {regularFiles.map((file, index) => (
+        <div key={file.filename}>
+          {walkthroughStep?.file === file.filename && walkthroughTotalSteps && (
+            <WalkthroughStepCard step={walkthroughStep} totalSteps={walkthroughTotalSteps} />
+          )}
+          {renderFile(file, annotationsByFile, mode, specmapFiles.length + index)}
+        </div>
+      ))}
     </div>
   );
 }

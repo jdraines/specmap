@@ -6,11 +6,20 @@ import type {
   PullFile,
   SpecmapFile,
   SpecContent,
+  AuthStatus,
+  Walkthrough,
+  Capabilities,
 } from './types';
 
 export const auth = {
+  status: () => apiFetch<AuthStatus>('/api/v1/auth/status'),
   me: () => apiFetch<User>('/api/v1/auth/me'),
   logout: () => apiFetch<{ status: string }>('/api/v1/auth/logout', { method: 'POST' }),
+  submitToken: (token: string) =>
+    apiFetch<{ user: User }>('/api/v1/auth/token', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
 };
 
 export const repos = {
@@ -31,9 +40,32 @@ export const pulls = {
     apiFetch<{ content: string }>(
       `/api/v1/repos/${owner}/${repo}/pulls/${number}/file-source?path=${encodeURIComponent(path)}`,
     ),
+  generateAnnotations: (
+    owner: string,
+    repo: string,
+    number: number,
+    mode: 'lite' | 'full' = 'full',
+    force: boolean = false,
+  ) =>
+    apiFetch<SpecmapFile>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/generate-annotations`, {
+      method: 'POST',
+      body: JSON.stringify({ mode, force }),
+    }),
 };
 
 export const specs = {
   content: (owner: string, repo: string, number: number, path: string) =>
     apiFetch<SpecContent>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/specs/${path}`),
+};
+
+export const capabilities = {
+  get: () => apiFetch<Capabilities>('/api/v1/capabilities'),
+};
+
+export const walkthrough = {
+  generate: (owner: string, repo: string, number: number, familiarity: number, depth: string) =>
+    apiFetch<Walkthrough>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/walkthrough`, {
+      method: 'POST',
+      body: JSON.stringify({ familiarity, depth }),
+    }),
 };

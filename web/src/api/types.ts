@@ -1,6 +1,7 @@
 export interface User {
   id: number;
-  github_id: number;
+  provider: string;
+  provider_id: number;
   login: string;
   name: string;
   avatar_url: string;
@@ -10,7 +11,8 @@ export interface User {
 
 export interface Repository {
   id: number;
-  github_id: number;
+  provider: string;
+  provider_id: number;
   owner: string;
   name: string;
   full_name: string;
@@ -74,4 +76,36 @@ export interface SpecmapFile {
 export interface SpecContent {
   path: string;
   content: string;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  auth_mode: 'pat' | 'oauth';
+  provider: string;
+  user?: User;
+  setup_hint?: string;
+}
+
+export interface WalkthroughStep {
+  step_number: number;
+  title: string;
+  narrative: string;
+  file: string;
+  start_line: number | null;
+  end_line: number | null;
+  refs: SpecRef[];
+}
+
+export interface Walkthrough {
+  summary: string;
+  steps: WalkthroughStep[];
+  familiarity: number;
+  depth: 'quick' | 'thorough';
+  head_sha: string;
+  generated_at: string;
+}
+
+export interface Capabilities {
+  walkthrough: boolean;
+  annotations: boolean;
 }

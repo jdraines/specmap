@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timezone
 
 from specmap.indexer.code_analyzer import CodeChange
+from specmap.indexer.hasher import hash_code_lines
 from specmap.llm.client import LLMClient
 from specmap.llm.prompts import build_annotation_prompt
 from specmap.llm.schemas import AnnotationResponse
@@ -24,12 +25,16 @@ class Mapper:
         changes: list[CodeChange],
         spec_contents: dict[str, str],
         context: str | None = None,
+        batch_token_budget: int = 0,
     ) -> list[Annotation]:
         """Generate annotations for code changes.
 
         Batches changes by file to reduce LLM calls. Sends code context + all
         spec sections and lets the LLM generate natural-language annotations
         with inline spec references.
+
+        If batch_token_budget > 0, small files are grouped into multi-file
+        batches to reduce LLM call count.
         """
         if not changes:
             return []
@@ -39,35 +44,46 @@ class Mapper:
         for change in changes:
             grouped.setdefault(change.file_path, []).append(change)
 
+        # Build file_contents dict for code_hash computation
+        file_contents: dict[str, str] = {}
+        for change in changes:
+            if change.file_path not in file_contents and change.content:
+                file_contents[change.file_path] = change.content
+
         all_annotations: list[Annotation] = []
 
         # Build spec sections context (shared across all batches)
         spec_sections = _build_spec_sections(spec_contents)
 
-        # Process each file's changes as a batch
-        for file_path, file_changes in grouped.items():
-            code_change_dicts = [
-                {
-                    "file_path": c.file_path,
-                    "start_line": c.start_line,
-                    "end_line": c.end_line,
-                    "content": c.content,
-                }
-                for c in file_changes
-            ]
+        # Build batches of file groups
+        batches = _build_batches(grouped, batch_token_budget)
+
+        for batch_files in batches:
+            code_change_dicts = []
+            batch_label_parts = []
+            for file_path in batch_files:
+                batch_label_parts.append(file_path)
+                for c in grouped[file_path]:
+                    code_change_dicts.append({
+                        "file_path": c.file_path,
+                        "start_line": c.start_line,
+                        "end_line": c.end_line,
+                        "content": c.content,
+                    })
 
             messages = build_annotation_prompt(code_change_dicts, spec_sections, context=context)
+            batch_label = ", ".join(batch_label_parts)
 
             try:
                 result = await self.llm.complete(
                     messages, response_format=AnnotationResponse
                 )
                 if isinstance(result, AnnotationResponse):
-                    annotations = _convert_results(result)
+                    annotations = _convert_results(result, file_contents)
                     all_annotations.extend(annotations)
             except Exception as e:
                 print(
-                    f"[specmap] Warning: LLM annotation failed for {file_path}: {e}",
+                    f"[specmap] Warning: LLM annotation failed for {batch_label}: {e}",
                     file=sys.stderr,
                 )
 
@@ -121,7 +137,10 @@ def _build_spec_sections(
     return spec_sections
 
 
-def _convert_results(response: AnnotationResponse) -> list[Annotation]:
+def _convert_results(
+    response: AnnotationResponse,
+    file_contents: dict[str, str] | None = None,
+) -> list[Annotation]:
     """Convert LLM AnnotationResponse to Annotation models."""
     annotations: list[Annotation] = []
 
@@ -137,6 +156,16 @@ def _convert_results(response: AnnotationResponse) -> list[Annotation]:
             for ref in result.refs
         ]
 
+        # Compute code_hash if file contents are available
+        code_hash = ""
+        if file_contents and result.file in file_contents:
+            try:
+                code_hash = hash_code_lines(
+                    file_contents[result.file], result.start_line, result.end_line
+                )
+            except (IndexError, ValueError):
+                pass
+
         annotation = Annotation(
             id=_generate_annotation_id(),
             file=result.file,
@@ -145,7 +174,51 @@ def _convert_results(response: AnnotationResponse) -> list[Annotation]:
             description=result.description,
             refs=refs,
             created_at=datetime.now(timezone.utc),
+            code_hash=code_hash,
         )
         annotations.append(annotation)
 
     return annotations
+
+
+def _build_batches(
+    grouped: dict[str, list[CodeChange]],
+    batch_token_budget: int,
+) -> list[list[str]]:
+    """Group files into batches for LLM calls.
+
+    If batch_token_budget <= 0, each file gets its own batch (current behavior).
+    Otherwise, small files are grouped up to the token budget.
+    """
+    if batch_token_budget <= 0:
+        return [[fp] for fp in grouped]
+
+    batches: list[list[str]] = []
+    current_batch: list[str] = []
+    current_tokens = 0
+
+    for file_path, file_changes in grouped.items():
+        # Estimate tokens as ~chars/4
+        file_tokens = sum(len(c.content) // 4 for c in file_changes if c.content)
+
+        if file_tokens >= batch_token_budget:
+            # Large file gets its own batch
+            if current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+            batches.append([file_path])
+            continue
+
+        if current_tokens + file_tokens > batch_token_budget and current_batch:
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(file_path)
+        current_tokens += file_tokens
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches

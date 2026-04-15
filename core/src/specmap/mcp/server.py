@@ -65,10 +65,22 @@ def create_server() -> Server:
                         "context": {
                             "type": "string",
                             "description": (
-                                "Optional freeform context from the development session "
-                                "(e.g. design decisions, constraints, instructions) that "
-                                "the LLM uses to write better annotation descriptions."
+                                "Development session context that improves annotation quality. "
+                                "Include: (1) what problem you're solving and why, "
+                                "(2) non-obvious design decisions or trade-offs, "
+                                "(3) which spec requirements this change addresses, "
+                                "(4) constraints (performance, backward-compat, etc.). "
+                                "This is ephemeral and not stored."
                             ),
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": (
+                                "If true, run the classification pipeline (diff, hunk parsing, "
+                                "hash comparison) but skip LLM calls and do not save changes. "
+                                "Returns a preview of what would be regenerated."
+                            ),
+                            "default": False,
                         },
                     },
                     "required": [],
@@ -122,6 +134,7 @@ def create_server() -> Server:
                     spec_files=arguments.get("spec_files"),
                     branch=arguments.get("branch"),
                     context=arguments.get("context"),
+                    dry_run=arguments.get("dry_run", False),
                 )
             elif name == "specmap_check":
                 result = await check_sync(

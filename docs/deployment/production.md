@@ -19,29 +19,71 @@ Browser ──────────► │  Reverse Proxy           │
                     └────────────┬─────────────┘
                                  │
                     ┌────────────▼─────────────┐
-                    │  GitHub API               │
-                    │  OAuth + Contents API     │
+                    │  Forge API               │
+                    │  GitHub / GitLab         │
+                    │  (auto-detected)         │
                     └──────────────────────────┘
 ```
 
 - **Single process**: `specmap serve` runs the API server with the React frontend embedded (when built with `--static-dir`)
 - **SQLite**: all state (users, tokens, cached PR data) stored in a single file
-- **No webhooks**: the server fetches data from GitHub on demand via the Contents API
+- **No webhooks**: the server fetches data from the forge on demand via the API
+- **Auto-detection**: forge provider (GitHub or GitLab) is detected from `git remote origin`
 - **TLS**: handled by a reverse proxy in front of the application
 
-## GitHub OAuth App Setup
+## Auth Configuration
 
-Go to [github.com/settings/developers](https://github.com/settings/developers) → **OAuth Apps** → **New OAuth App**:
+Specmap supports two auth modes. Choose the one that fits your environment.
+
+### PAT mode (recommended for most teams)
+
+Set a personal access token as an environment variable. The server authenticates on startup — no login page needed.
+
+**GitHub:**
+
+```bash
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+Or ensure `gh` CLI is authenticated on the server (`gh auth login`).
+
+**GitLab:**
+
+```bash
+GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
+```
+
+Or ensure `glab` CLI is authenticated on the server.
+
+### OAuth mode (enterprise)
+
+For organizations that restrict PATs, configure OAuth credentials instead.
+
+**GitHub** — go to [github.com/settings/developers](https://github.com/settings/developers) > **OAuth Apps** > **New OAuth App**:
 
 | Field | Value |
 |-------|-------|
 | Application name | Specmap |
 | Homepage URL | `https://your-domain.com` |
-| Authorization callback URL | `https://your-domain.com/api/v1/auth/callback` |
+| Authorization callback URL | `https://your-domain.com/api/v1/auth/callback/github` |
 
-Save the **Client ID** and generate a **Client Secret**.
+**GitLab** — go to your GitLab instance > **Admin** > **Applications** > **New Application**:
 
-No installation step is needed — OAuth Apps use the `repo` scope to access repositories the authenticated user has access to.
+| Field | Value |
+|-------|-------|
+| Name | Specmap |
+| Redirect URI | `https://your-domain.com/api/v1/auth/callback/gitlab` |
+| Scopes | `read_api`, `read_repository` |
+
+Set the client credentials:
+
+```bash
+GITHUB_CLIENT_ID=Iv1.abc123
+GITHUB_CLIENT_SECRET=secret123
+# or for GitLab:
+GITLAB_CLIENT_ID=app_id_123
+GITLAB_CLIENT_SECRET=secret123
+```
 
 ## Environment Variables
 
@@ -51,25 +93,39 @@ No installation step is needed — OAuth Apps use the `repo` scope to access rep
 | `HOST` | No | Host to bind to (default: `0.0.0.0`) |
 | `BASE_URL` | Yes | Public URL of the server (e.g., `https://specmap.example.com`) |
 | `DATABASE_PATH` | No | Path to SQLite database file (default: `./specmap.db`) |
-| `GITHUB_CLIENT_ID` | Yes | OAuth App Client ID |
-| `GITHUB_CLIENT_SECRET` | Yes | OAuth App Client Secret |
-| `SESSION_SECRET` | Yes | Random string, 32+ characters (`openssl rand -hex 32`) |
-| `ENCRYPTION_KEY` | Yes | 32 bytes hex-encoded for AES-256-GCM token encryption (`openssl rand -hex 32`) |
+| `GITHUB_TOKEN` | * | GitHub PAT (PAT mode) |
+| `GITLAB_TOKEN` | * | GitLab PAT (PAT mode) |
+| `GITHUB_CLIENT_ID` | * | GitHub OAuth App Client ID (OAuth mode) |
+| `GITHUB_CLIENT_SECRET` | * | GitHub OAuth App Client Secret (OAuth mode) |
+| `GITLAB_CLIENT_ID` | * | GitLab OAuth App ID (OAuth mode) |
+| `GITLAB_CLIENT_SECRET` | * | GitLab OAuth App Secret (OAuth mode) |
+| `SESSION_SECRET` | No | Random string, 32+ chars (auto-generated if not set) |
+| `ENCRYPTION_KEY` | No | 32 bytes hex-encoded for AES-256-GCM (auto-generated if not set) |
+| `SPECMAP_FORGE` | No | Force forge provider: `github` or `gitlab` (auto-detected from git remote) |
+| `SPECMAP_FORGE_URL` | No | Base URL for self-hosted GitLab (e.g., `https://gitlab.example.com`) |
 | `CORS_ORIGIN` | No | Set only if frontend is served from a different origin |
 | `FRONTEND_URL` | No | Where to redirect after OAuth login (defaults to `CORS_ORIGIN` or `BASE_URL`) |
 | `STATIC_DIR` | No | Directory with built frontend files (for embedded SPA mode) |
 
-### Example `.env`
+\* At least one auth method must be configured for the detected provider.
+
+### Example `.env` (PAT mode)
 
 ```bash
 PORT=8080
 BASE_URL=https://specmap.example.com
-
 DATABASE_PATH=/data/specmap.db
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+```
 
+### Example `.env` (OAuth mode)
+
+```bash
+PORT=8080
+BASE_URL=https://specmap.example.com
+DATABASE_PATH=/data/specmap.db
 GITHUB_CLIENT_ID=Iv1.abc123
 GITHUB_CLIENT_SECRET=secret123
-
 SESSION_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
@@ -87,14 +143,26 @@ docker run -d \
   -v specmap-data:/data \
   -e BASE_URL=https://specmap.example.com \
   -e DATABASE_PATH=/data/specmap.db \
-  -e GITHUB_CLIENT_ID=Iv1.abc123 \
-  -e GITHUB_CLIENT_SECRET=secret123 \
-  -e SESSION_SECRET=$(openssl rand -hex 32) \
-  -e ENCRYPTION_KEY=$(openssl rand -hex 32) \
+  -e GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx \
   specmap:latest
 ```
 
 The Docker image bundles the Python API server with the built React frontend. It runs `specmap serve --static-dir /app/static` to serve both from a single process.
+
+### Self-hosted GitLab
+
+```bash
+docker run -d \
+  --name specmap \
+  -p 8080:8080 \
+  -v specmap-data:/data \
+  -e BASE_URL=https://specmap.example.com \
+  -e DATABASE_PATH=/data/specmap.db \
+  -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
+  -e SPECMAP_FORGE=gitlab \
+  -e SPECMAP_FORGE_URL=https://gitlab.example.com \
+  specmap:latest
+```
 
 ## Reverse Proxy
 
