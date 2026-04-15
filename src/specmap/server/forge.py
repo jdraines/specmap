@@ -207,7 +207,7 @@ def detect_forge(repo_root: str | None = None) -> tuple[str, str]:
             return ("gitlab", override_url or "https://gitlab.com")
 
     # Parse git remote
-    hostname = _get_remote_hostname(repo_root)
+    hostname, _ = _parse_remote_url(repo_root)
     if not hostname:
         # Default to github if we can't detect
         logger.warning("Could not detect git remote origin, defaulting to github")
@@ -227,8 +227,8 @@ def detect_forge(repo_root: str | None = None) -> tuple[str, str]:
         return ("github", f"{base}/api/v3")
 
 
-def _get_remote_hostname(repo_root: str | None) -> str | None:
-    """Extract hostname from git remote get-url origin."""
+def _parse_remote_url(repo_root: str | None) -> tuple[str | None, str | None]:
+    """Extract (hostname, full_name) from git remote get-url origin."""
     try:
         cmd = ["git", "remote", "get-url", "origin"]
         kwargs: dict = {"capture_output": True, "text": True, "timeout": 5}
@@ -236,20 +236,26 @@ def _get_remote_hostname(repo_root: str | None) -> str | None:
             kwargs["cwd"] = repo_root
         result = subprocess.run(cmd, **kwargs)
         if result.returncode != 0:
-            return None
+            return None, None
         url = result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        return None
+        return None, None
 
     # SSH: git@github.com:user/repo.git
     m = _SSH_REMOTE_RE.match(url)
     if m:
-        return m.group(1)
+        return m.group(1), m.group(2)
     # HTTPS: https://github.com/user/repo.git
     m = _HTTPS_REMOTE_RE.match(url)
     if m:
-        return m.group(1)
-    return None
+        return m.group(1), m.group(2)
+    return None, None
+
+
+def detect_repo_full_name(repo_root: str | None = None) -> str | None:
+    """Return the full_name (e.g. 'owner/repo') from git remote origin, or None."""
+    _, full_name = _parse_remote_url(repo_root)
+    return full_name
 
 
 def _probe_gitlab(base_url: str) -> bool:

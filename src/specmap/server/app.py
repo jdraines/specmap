@@ -24,6 +24,7 @@ from specmap.server.forge import (
     ForgeProvider,
     detect_auth_mode,
     detect_forge,
+    detect_repo_full_name,
     resolve_token,
 )
 from specmap.server.github import GitHubProvider
@@ -58,6 +59,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         provider = _build_provider(provider_name, base_url, config)
         app.state.provider = provider
         app.state.auth_mode = detect_auth_mode(config, provider_name)
+        app.state.current_repo = detect_repo_full_name()
 
         # PAT mode: resolve token on startup
         app.state.forge_token: str | None = None
@@ -201,6 +203,7 @@ def create_app(config: ServerConfig) -> FastAPI:
                     "auth_mode": mode,
                     "provider": provider.name,
                     "user": _user_response(user),
+                    "current_repo": request.app.state.current_repo,
                 }
         except HTTPError:
             pass
@@ -216,6 +219,7 @@ def create_app(config: ServerConfig) -> FastAPI:
             "auth_mode": mode,
             "provider": provider.name,
             "setup_hint": hint,
+            "current_repo": request.app.state.current_repo,
         }
 
     @app.post("/api/v1/auth/token")
