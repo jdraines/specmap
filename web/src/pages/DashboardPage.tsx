@@ -83,7 +83,7 @@ export function DashboardPage() {
                 className="flex items-center justify-between px-4 py-2.5 hover:bg-[var(--hover-bg)]"
               >
                 <Link
-                  to={`/${r.owner}/${r.name}`}
+                  to={`/r/${r.full_name}`}
                   className="text-sm text-[var(--text-primary)] no-underline hover:underline"
                 >
                   {r.full_name}
@@ -92,7 +92,7 @@ export function DashboardPage() {
                   {r.recent_pulls?.map((pr) => (
                     <Link
                       key={pr.number}
-                      to={`/${r.owner}/${r.name}/pull/${pr.number}`}
+                      to={`/r/${r.full_name}/pull/${pr.number}`}
                       title={pr.title}
                       className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] no-underline"
                     >

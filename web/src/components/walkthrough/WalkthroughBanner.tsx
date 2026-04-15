@@ -3,8 +3,7 @@ import { renderTextWithBold } from './WalkthroughStepCard';
 import { Spinner } from '../ui/Spinner';
 
 interface WalkthroughBannerProps {
-  owner: string;
-  repo: string;
+  fullName: string;
   prNumber: number;
   hasAnnotations: boolean;
 }
@@ -20,7 +19,7 @@ const depthOptions = [
   { value: 'thorough' as const, label: 'thorough' },
 ] as const;
 
-export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: WalkthroughBannerProps) {
+export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: WalkthroughBannerProps) {
   const {
     walkthrough,
     active,
@@ -105,7 +104,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => generate(owner, repo, prNumber)}
+              onClick={() => generate(fullName, prNumber)}
               disabled={loading}
               className="px-3 py-1.5 text-xs font-semibold bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -122,7 +121,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
             <div className="mt-2 flex items-center gap-2">
               <p className="text-xs text-[var(--error-text)]">{error}</p>
               <button
-                onClick={() => generate(owner, repo, prNumber)}
+                onClick={() => generate(fullName, prNumber)}
                 className="text-xs text-[var(--accent-text)] bg-transparent border-0 cursor-pointer underline"
               >
                 retry

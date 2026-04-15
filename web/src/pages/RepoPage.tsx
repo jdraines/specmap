@@ -1,31 +1,34 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router';
+import { Link } from 'react-router';
 import type { PullRequest } from '../api/types';
 import { pulls as pullsApi } from '../api/endpoints';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
 
-export function RepoPage() {
-  const { owner, repo } = useParams<{ owner: string; repo: string }>();
+interface RepoPageProps {
+  fullName: string;
+}
+
+export function RepoPage({ fullName }: RepoPageProps) {
   const [pullList, setPullList] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!owner || !repo) return;
+    if (!fullName) return;
     pullsApi
-      .list(owner, repo)
+      .list(fullName)
       .then(setPullList)
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [owner, repo]);
+  }, [fullName]);
 
   if (loading) return <LoadingSpinner />;
   if (error) return <p className="text-[var(--error-text)]">{error}</p>;
 
   return (
     <div className="max-w-3xl mx-auto">
-      <Breadcrumb items={[{ label: 'repos', to: '/' }, { label: `${owner}/${repo}` }]} />
+      <Breadcrumb items={[{ label: 'repos', to: '/' }, { label: fullName }]} />
       <h1 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">
         open pull requests
       </h1>
@@ -36,7 +39,7 @@ export function RepoPage() {
           {pullList.map((pr) => (
             <Link
               key={pr.id}
-              to={`/${owner}/${repo}/pull/${pr.number}`}
+              to={`/r/${fullName}/pull/${pr.number}`}
               className="flex items-start gap-3 px-4 py-2.5 hover:bg-[var(--hover-bg)] no-underline"
             >
               <span className="text-[var(--text-muted)] text-xs pt-0.5">#{pr.number}</span>

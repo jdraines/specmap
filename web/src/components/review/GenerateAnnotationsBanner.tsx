@@ -3,8 +3,7 @@ import { useReviewStore } from '../../stores/reviewStore';
 import { Spinner } from '../ui/Spinner';
 
 interface GenerateAnnotationsBannerProps {
-  owner: string;
-  repo: string;
+  fullName: string;
   prNumber: number;
   hasAnnotations: boolean;
 }
@@ -37,8 +36,7 @@ function ProgressDisplay() {
 }
 
 export function GenerateAnnotationsBanner({
-  owner,
-  repo,
+  fullName,
   prNumber,
   hasAnnotations,
 }: GenerateAnnotationsBannerProps) {
@@ -54,7 +52,7 @@ export function GenerateAnnotationsBanner({
     return (
       <div className="font-sans flex items-center gap-2 mb-4 px-1">
         <button
-          onClick={() => generateAnnotations(owner, repo, prNumber, mode, true, timeout)}
+          onClick={() => generateAnnotations(fullName, prNumber, mode, true, timeout)}
           disabled={generating || clearingCache}
           className="text-xs text-[var(--text-muted)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -68,7 +66,7 @@ export function GenerateAnnotationsBanner({
         </button>
         <span className="text-xs text-[var(--text-muted)]">·</span>
         <button
-          onClick={() => clearCache(owner, repo, prNumber)}
+          onClick={() => clearCache(fullName, prNumber)}
           disabled={generating || clearingCache}
           className="text-xs text-[var(--text-muted)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--error-text)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -122,7 +120,7 @@ export function GenerateAnnotationsBanner({
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => generateAnnotations(owner, repo, prNumber, mode, false, timeout)}
+          onClick={() => generateAnnotations(fullName, prNumber, mode, false, timeout)}
           disabled={generating}
           className="px-3 py-1.5 text-xs bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -135,7 +133,7 @@ export function GenerateAnnotationsBanner({
         <div className="mt-2 flex items-center gap-2">
           <p className="text-xs text-[var(--error-text)]">{generateError}</p>
           <button
-            onClick={() => generateAnnotations(owner, repo, prNumber, mode, false, timeout)}
+            onClick={() => generateAnnotations(fullName, prNumber, mode, false, timeout)}
             className="text-xs text-[var(--accent-text)] bg-transparent border-0 cursor-pointer underline"
           >
             retry

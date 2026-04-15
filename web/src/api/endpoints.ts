@@ -33,25 +33,24 @@ export const repos = {
     const query = qs.toString();
     return apiFetch<PaginatedResponse<Repository>>(`/api/v1/repos${query ? `?${query}` : ''}`);
   },
-  get: (owner: string, repo: string) => apiFetch<Repository>(`/api/v1/repos/${owner}/${repo}`),
+  get: (fullName: string) => apiFetch<Repository>(`/api/v1/repos/${fullName}`),
 };
 
 export const pulls = {
-  list: (owner: string, repo: string) =>
-    apiFetch<PullRequest[]>(`/api/v1/repos/${owner}/${repo}/pulls`),
-  get: (owner: string, repo: string, number: number) =>
-    apiFetch<PullRequest>(`/api/v1/repos/${owner}/${repo}/pulls/${number}`),
-  files: (owner: string, repo: string, number: number) =>
-    apiFetch<PullFile[]>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/files`),
-  annotations: (owner: string, repo: string, number: number) =>
-    apiFetch<SpecmapFile>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/annotations`),
-  fileSource: (owner: string, repo: string, number: number, path: string) =>
+  list: (fullName: string) =>
+    apiFetch<PullRequest[]>(`/api/v1/repos/${fullName}/pulls`),
+  get: (fullName: string, number: number) =>
+    apiFetch<PullRequest>(`/api/v1/repos/${fullName}/pulls/${number}`),
+  files: (fullName: string, number: number) =>
+    apiFetch<PullFile[]>(`/api/v1/repos/${fullName}/pulls/${number}/files`),
+  annotations: (fullName: string, number: number) =>
+    apiFetch<SpecmapFile>(`/api/v1/repos/${fullName}/pulls/${number}/annotations`),
+  fileSource: (fullName: string, number: number, path: string) =>
     apiFetch<{ content: string }>(
-      `/api/v1/repos/${owner}/${repo}/pulls/${number}/file-source?path=${encodeURIComponent(path)}`,
+      `/api/v1/repos/${fullName}/pulls/${number}/file-source?path=${encodeURIComponent(path)}`,
     ),
   generateAnnotations: (
-    owner: string,
-    repo: string,
+    fullName: string,
     number: number,
     mode: 'lite' | 'full' = 'full',
     force: boolean = false,
@@ -59,21 +58,21 @@ export const pulls = {
     onProgress?: (data: GenerateProgress) => void,
   ) =>
     apiFetchSSE(
-      `/api/v1/repos/${owner}/${repo}/pulls/${number}/generate-annotations`,
+      `/api/v1/repos/${fullName}/pulls/${number}/generate-annotations`,
       { mode, force, timeout },
       onProgress ?? (() => {}),
       ((timeout ?? 120) * 1000) + 60_000,
     ),
-  clearCache: (owner: string, repo: string, number: number) =>
+  clearCache: (fullName: string, number: number) =>
     apiFetch<{ status: string }>(
-      `/api/v1/repos/${owner}/${repo}/pulls/${number}/cache`,
+      `/api/v1/repos/${fullName}/pulls/${number}/cache`,
       { method: 'DELETE' },
     ),
 };
 
 export const specs = {
-  content: (owner: string, repo: string, number: number, path: string) =>
-    apiFetch<SpecContent>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/specs/${path}`),
+  content: (fullName: string, number: number, path: string) =>
+    apiFetch<SpecContent>(`/api/v1/repos/${fullName}/pulls/${number}/specs/${path}`),
 };
 
 export const capabilities = {
@@ -81,9 +80,9 @@ export const capabilities = {
 };
 
 export const walkthrough = {
-  generate: (owner: string, repo: string, number: number, familiarity: number, depth: string) =>
+  generate: (fullName: string, number: number, familiarity: number, depth: string) =>
     apiFetch<Walkthrough>(
-      `/api/v1/repos/${owner}/${repo}/pulls/${number}/walkthrough`,
+      `/api/v1/repos/${fullName}/pulls/${number}/walkthrough`,
       {
         method: 'POST',
         body: JSON.stringify({ familiarity, depth }),

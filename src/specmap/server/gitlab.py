@@ -270,7 +270,7 @@ class GitLabProvider:
     def _normalize_repo(p: dict) -> dict:
         return {
             "id": p["id"],
-            "owner": p["namespace"]["path"],
+            "owner": p["path_with_namespace"].rsplit("/", 1)[0],
             "name": p["path"],
             "full_name": p["path_with_namespace"],
             "private": p.get("visibility") == "private",

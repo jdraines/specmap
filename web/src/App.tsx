@@ -4,8 +4,7 @@ import { useAuthStore } from './stores/authStore';
 import { AppShell } from './components/layout/AppShell';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { RepoPage } from './pages/RepoPage';
-import { PRReviewPage } from './pages/PRReviewPage';
+import { RepoSplatRouter } from './pages/RepoSplatRouter';
 import { LoadingSpinner } from './components/ui/LoadingSpinner';
 
 export default function App() {
@@ -31,8 +30,7 @@ export default function App() {
     <AppShell>
       <Routes>
         <Route path="/" element={<DashboardPage />} />
-        <Route path="/:owner/:repo" element={<RepoPage />} />
-        <Route path="/:owner/:repo/pull/:number" element={<PRReviewPage />} />
+        <Route path="/r/*" element={<RepoSplatRouter />} />
       </Routes>
     </AppShell>
   );
