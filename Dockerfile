@@ -11,4 +11,4 @@ COPY core/ /app/core/
 RUN pip install --no-cache-dir /app/core/
 COPY --from=frontend /build/dist/ /app/static/
 EXPOSE 8080
-CMD ["specmap", "serve", "--static-dir", "/app/static"]
+CMD ["specmap", "serve", "--host", "0.0.0.0", "--static-dir", "/app/static"]
