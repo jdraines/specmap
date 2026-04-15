@@ -18,7 +18,7 @@ function renderNarrative(text: string): React.ReactNode[] {
       nodes.push(
         <span
           key={`ref-${i}`}
-          className="inline-flex items-center px-1 py-0 text-xs bg-[var(--badge-bg)] text-[var(--badge-text)]"
+          className="inline-flex items-center px-1 py-0 text-xs font-mono bg-[var(--badge-bg)] text-[var(--badge-text)]"
         >
           {parts[i + 1]}
         </span>,
@@ -37,12 +37,15 @@ export function WalkthroughStepCard({ step, totalSteps }: WalkthroughStepCardPro
 
   return (
     <div
-      className="border-l-4 border-l-[var(--accent)] border border-[var(--border)] bg-[var(--surface-2)] p-4 mb-2"
+      className="font-sans border-l-4 border-l-[var(--wt-border)] border border-[var(--border)] bg-gradient-to-r from-[var(--wt-gradient-from)] to-[var(--wt-gradient-to)] p-4 mb-2"
       data-walkthrough-step={step.step_number}
     >
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-[var(--text-muted)]">
-          Step {step.step_number} of {totalSteps}
+        <span className="inline-flex items-center gap-2 text-xs">
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--wt-step-num-bg)] text-[var(--wt-step-num-text)] text-[10px] font-semibold">
+            {step.step_number}
+          </span>
+          <span className="text-[var(--text-muted)]">of {totalSteps}</span>
         </span>
         <button
           onClick={exit}
@@ -54,7 +57,7 @@ export function WalkthroughStepCard({ step, totalSteps }: WalkthroughStepCardPro
 
       <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">{step.title}</h3>
 
-      <div className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
+      <div className="text-sm text-[var(--text-primary)] leading-relaxed mb-3">
         {renderNarrative(step.narrative)}
       </div>
 
@@ -70,14 +73,14 @@ export function WalkthroughStepCard({ step, totalSteps }: WalkthroughStepCardPro
         <button
           onClick={prevStep}
           disabled={currentStep === 0}
-          className="px-2 py-1 text-xs bg-[var(--surface-1)] text-[var(--text-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--text-muted)] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-2 py-1 text-xs bg-[var(--surface-1)] text-[var(--text-secondary)] border border-[var(--wt-border)] cursor-pointer hover:bg-[color-mix(in_srgb,var(--wt-border)_15%,transparent)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Prev
         </button>
         <button
           onClick={nextStep}
           disabled={currentStep >= totalSteps - 1}
-          className="px-2 py-1 text-xs bg-[var(--surface-1)] text-[var(--text-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--text-muted)] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-2 py-1 text-xs bg-[var(--surface-1)] text-[var(--text-secondary)] border border-[var(--wt-border)] cursor-pointer hover:bg-[color-mix(in_srgb,var(--wt-border)_15%,transparent)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Next
         </button>

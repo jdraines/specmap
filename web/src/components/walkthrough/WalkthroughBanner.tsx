@@ -1,4 +1,5 @@
 import { useWalkthroughStore } from '../../stores/walkthroughStore';
+import { Spinner } from '../ui/Spinner';
 
 interface WalkthroughBannerProps {
   owner: string;
@@ -37,7 +38,13 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
   if (active) return null;
 
   return (
-    <div className="border border-[var(--border)] bg-[var(--surface-2)] p-4 mb-4">
+    <div
+      className={`font-sans border p-4 mb-4 ${
+        walkthrough
+          ? 'border-[var(--wt-border)] bg-gradient-to-r from-[var(--wt-gradient-from)] to-[var(--wt-gradient-to)]'
+          : 'border-[var(--border)] bg-[var(--surface-2)]'
+      }`}
+    >
       {walkthrough ? (
         <>
           <p className="text-sm text-[var(--text-primary)] mb-3">{walkthrough.summary}</p>
@@ -104,7 +111,9 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
               {loading ? 'Generating...' : 'Generate Walkthrough'}
             </button>
             {loading && (
-              <span className="text-xs text-[var(--text-muted)]">This may take a moment...</span>
+              <span className="text-xs text-[var(--text-muted)]">
+                <Spinner /> Generating walkthrough...
+              </span>
             )}
           </div>
 
@@ -113,7 +122,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
               <p className="text-xs text-[var(--error-text)]">{error}</p>
               <button
                 onClick={() => generate(owner, repo, prNumber)}
-                className="text-xs text-[var(--accent)] bg-transparent border-0 cursor-pointer underline"
+                className="text-xs text-[var(--accent-text)] bg-transparent border-0 cursor-pointer underline"
               >
                 retry
               </button>
