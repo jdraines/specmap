@@ -59,7 +59,8 @@ class ForgeProvider(Protocol):
         ...
 
     async def list_pulls(
-        self, client: httpx.AsyncClient, token: str, owner: str, repo: str
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str,
+        *, per_page: int = 30,
     ) -> list[dict]:
         """Return normalized pulls: [{number, title, state, head_branch, base_branch, head_sha, author_login}, ...]."""
         ...

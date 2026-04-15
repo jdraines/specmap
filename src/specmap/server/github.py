@@ -104,11 +104,12 @@ class GitHubProvider:
         return self._normalize_repo(resp.json())
 
     async def list_pulls(
-        self, client: httpx.AsyncClient, token: str, owner: str, repo: str
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str,
+        *, per_page: int = 30,
     ) -> list[dict]:
         resp = await client.get(
             f"{self.base_url}/repos/{owner}/{repo}/pulls",
-            params={"state": "open", "per_page": "30"},
+            params={"state": "open", "per_page": str(per_page)},
             headers=self._headers(token),
         )
         resp.raise_for_status()

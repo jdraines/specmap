@@ -127,12 +127,13 @@ class GitLabProvider:
         return self._normalize_repo(resp.json())
 
     async def list_pulls(
-        self, client: httpx.AsyncClient, token: str, owner: str, repo: str
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str,
+        *, per_page: int = 30,
     ) -> list[dict]:
         proj_id = self._project_id(owner, repo)
         resp = await client.get(
             f"{self.api_base}/projects/{proj_id}/merge_requests",
-            params={"state": "opened", "per_page": "30"},
+            params={"state": "opened", "per_page": str(per_page)},
             headers=self._headers(token),
         )
         resp.raise_for_status()
