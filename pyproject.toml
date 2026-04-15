@@ -43,7 +43,7 @@ packages = ["src/specmap"]
 path = "hatch_build.py"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit"]
 asyncio_mode = "auto"
 
 [tool.ruff]

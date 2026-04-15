@@ -51,7 +51,7 @@ This part doesn't need the web UI or the specmap repo. It's the Phase 1 workflow
 ### 1. Install specmap
 
 ```bash
-uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
+uv tool install git+https://github.com/jdraines/specmap.git
 ```
 
 This gives you two commands available globally: `specmap` (CLI) and `specmap-mcp` (MCP server).

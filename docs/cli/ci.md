@@ -23,7 +23,7 @@ jobs:
 
       - name: Validate annotations
         run: |
-          uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core' \
+          uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git' \
             specmap --no-color validate
 ```
 

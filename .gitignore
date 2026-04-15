@@ -43,5 +43,5 @@ web/dist/
 *.db
 
 # Server static files (built frontend)
-core/src/specmap/server/static/
-core/src/specmap/_static/
+src/specmap/server/static/
+src/specmap/_static/

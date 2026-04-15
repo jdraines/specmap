@@ -5,7 +5,7 @@ This walkthrough takes you from zero to a validated spec-annotated codebase in f
 ## Step 1: Install Specmap
 
 ```bash
-uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
+uv tool install git+https://github.com/jdraines/specmap.git
 ```
 
 This gives you two commands: `specmap` (CLI) and `specmap-mcp` (MCP server).
