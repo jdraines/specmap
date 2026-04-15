@@ -24,17 +24,26 @@ def _open_browser_after_delay(url: str, delay: float = 0.8):
     threading.Thread(target=_open, daemon=True).start()
 
 
-def _maybe_prompt_api_key() -> str | None:
-    """Prompt the user for an LLM API key if not already set.
+def _infer_provider(api_key: str) -> tuple[str, str]:
+    """Return (provider_name, default_model) based on the API key prefix."""
+    if api_key.startswith("sk-ant-"):
+        return ("Anthropic", "anthropic/claude-sonnet-4-20250514")
+    if api_key.startswith("sk-"):
+        return ("OpenAI", "gpt-4o-mini")
+    return ("Unknown", "gpt-4o-mini")
 
-    Returns the key string, or None if skipped.
+
+def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
+    """Prompt the user for an LLM API key and model if not already set.
+
+    Returns (api_key, model). Either or both may be None.
     Skipped entirely if SPECMAP_API_KEY or SPECMAP_SKIP_API_KEY_CHECK is set.
     """
     if os.environ.get("SPECMAP_API_KEY") or os.environ.get("SPECMAP_SKIP_API_KEY_CHECK"):
-        return os.environ.get("SPECMAP_API_KEY") or None
+        return os.environ.get("SPECMAP_API_KEY") or None, None
 
+    import questionary
     from rich.console import Console
-    from rich.prompt import Prompt
 
     console = Console()
     console.print(
@@ -42,35 +51,58 @@ def _maybe_prompt_api_key() -> str | None:
         "An API key enables AI-powered features (annotation generation, guided walkthroughs).\n"
     )
 
-    choice = Prompt.ask(
+    choice = questionary.select(
         "How would you like to proceed?",
-        choices=["enter", "file", "skip"],
-        default="skip",
-    )
+        choices=[
+            questionary.Choice("Enter an API key", value="enter"),
+            questionary.Choice("Read key from a file", value="file"),
+            questionary.Choice("Skip (disable AI features)", value="skip"),
+        ],
+    ).ask()
+
+    if choice is None:  # user pressed Ctrl-C
+        return None, None
+
+    api_key: str | None = None
 
     if choice == "enter":
-        key = Prompt.ask("API key").strip()
-        if key:
-            return key
-        console.print("[yellow]No key entered, skipping.[/yellow]")
-        return None
+        key = questionary.text("API key:").ask()
+        if key and key.strip():
+            api_key = key.strip()
+        else:
+            console.print("[yellow]No key entered, skipping.[/yellow]")
+            return None, None
 
-    if choice == "file":
-        raw_path = Prompt.ask("Path to API key file").strip()
-        path = os.path.abspath(os.path.expanduser(raw_path))
+    elif choice == "file":
+        raw_path = questionary.text("Path to API key file:").ask()
+        if raw_path is None:
+            return None, None
+        path = os.path.abspath(os.path.expanduser(raw_path.strip()))
         try:
             key = open(path).read().strip()  # noqa: SIM115
             if key:
                 console.print(f"[green]Read key from {path}[/green]")
-                return key
-            console.print("[yellow]File was empty, skipping.[/yellow]")
+                api_key = key
+            else:
+                console.print("[yellow]File was empty, skipping.[/yellow]")
+                return None, None
         except (OSError, IOError) as e:
             console.print(f"[red]Could not read file: {e}[/red]")
-        return None
+            return None, None
 
-    # skip
-    console.print("[dim]Skipping — AI features will be disabled.[/dim]\n")
-    return None
+    else:  # skip
+        console.print("[dim]Skipping — AI features will be disabled.[/dim]\n")
+        return None, None
+
+    # We have a key — detect provider and prompt for model
+    provider, default_model = _infer_provider(api_key)
+    console.print(f"[green]✓ Detected provider: {provider}[/green]")
+
+    model = questionary.text("Model:", default=default_model).ask()
+    if model is None:  # Ctrl-C
+        model = default_model
+
+    return api_key, model.strip() or default_model
 
 
 @app.command()
@@ -100,10 +132,12 @@ def serve(
 
         resolved_static = get_bundled_static_dir() or ""
 
-    # Prompt for API key if not set
-    api_key = _maybe_prompt_api_key()
+    # Prompt for API key and model if not set
+    api_key, model = _maybe_prompt_api_key()
     if api_key:
         os.environ["SPECMAP_API_KEY"] = api_key
+    if model and not os.environ.get("SPECMAP_MODEL"):
+        os.environ["SPECMAP_MODEL"] = model
 
     config = ServerConfig.from_env(
         port=str(port), host=host, database_path=db, static_dir=resolved_static
