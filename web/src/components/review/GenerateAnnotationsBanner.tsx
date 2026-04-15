@@ -45,7 +45,7 @@ export function GenerateAnnotationsBanner({
 
   // No annotations: show full banner
   return (
-    <div className="border border-[var(--border)] bg-[var(--surface-2)] p-4 mb-4">
+    <div className="border border-[var(--wt-border)] bg-gradient-to-r from-[var(--wt-gradient-from)] to-[var(--wt-gradient-to)] p-4 mb-4">
       <p className="text-sm text-[var(--text-secondary)] mb-3">
         This PR has no specmap annotations. Generate them server-side to enable spec-linked review.
       </p>

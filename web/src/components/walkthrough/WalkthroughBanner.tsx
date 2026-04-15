@@ -42,7 +42,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
       className={`font-sans border p-4 mb-4 ${
         walkthrough
           ? 'border-[var(--wt-border)] bg-gradient-to-r from-[var(--wt-gradient-from)] to-[var(--wt-gradient-to)]'
-          : 'border-[var(--border)] bg-[var(--surface-2)]'
+          : 'border-[var(--wt-border)] bg-gradient-to-r from-[var(--wt-gradient-from)] to-[var(--wt-gradient-to)]'
       }`}
     >
       {walkthrough ? (

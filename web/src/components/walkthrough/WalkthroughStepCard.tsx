@@ -7,6 +7,16 @@ interface WalkthroughStepCardProps {
   totalSteps: number;
 }
 
+function renderTextWithBold(text: string, keyPrefix: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={`${keyPrefix}-b${i}`}>{part.slice(2, -2)}</strong>;
+    }
+    return <span key={`${keyPrefix}-${i}`}>{part}</span>;
+  });
+}
+
 function renderNarrative(text: string): React.ReactNode[] {
   // Split on [N] references and render inline
   const parts = text.split(/(\[(\d+)\])/g);
@@ -14,7 +24,7 @@ function renderNarrative(text: string): React.ReactNode[] {
   let i = 0;
   while (i < parts.length) {
     if (i + 2 < parts.length && parts[i + 1] && /^\[\d+\]$/.test(parts[i + 1])) {
-      nodes.push(<span key={i}>{parts[i]}</span>);
+      nodes.push(...renderTextWithBold(parts[i], String(i)));
       nodes.push(
         <span
           key={`ref-${i}`}
@@ -25,7 +35,7 @@ function renderNarrative(text: string): React.ReactNode[] {
       );
       i += 3;
     } else {
-      nodes.push(<span key={i}>{parts[i]}</span>);
+      nodes.push(...renderTextWithBold(parts[i], String(i)));
       i += 1;
     }
   }

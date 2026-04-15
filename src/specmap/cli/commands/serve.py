@@ -43,7 +43,12 @@ def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
         return os.environ.get("SPECMAP_API_KEY") or None, None
 
     import questionary
+    from questionary import Style
     from rich.console import Console
+
+    _PROMPT_STYLE = Style([
+        ("highlighted", "fg:#5f819d bold"),
+    ])
 
     console = Console()
     console.print(
@@ -58,6 +63,7 @@ def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
             questionary.Choice("Read key from a file", value="file"),
             questionary.Choice("Skip (disable AI features)", value="skip"),
         ],
+        style=_PROMPT_STYLE,
     ).ask()
 
     if choice is None:  # user pressed Ctrl-C
@@ -74,7 +80,7 @@ def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
             return None, None
 
     elif choice == "file":
-        raw_path = questionary.text("Path to API key file:").ask()
+        raw_path = questionary.path("Path to API key file:").ask()
         if raw_path is None:
             return None, None
         path = os.path.abspath(os.path.expanduser(raw_path.strip()))
