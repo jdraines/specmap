@@ -47,7 +47,7 @@ export function SpecBadge({ refId: _refId, specRef }: SpecBadgeProps) {
     <>
       <button
         ref={badgeRef}
-        className="inline-flex items-center gap-1 px-1.5 py-0 text-xs bg-[var(--badge-bg)] text-[var(--badge-text)] hover:opacity-80 cursor-pointer border-0"
+        className="font-mono inline-flex items-center gap-1 px-1.5 py-0 text-xs bg-[var(--badge-bg)] text-[var(--badge-text)] hover:opacity-80 cursor-pointer border-0"
         onClick={() => openModal(specRef)}
         onMouseEnter={show}
         onMouseLeave={hide}

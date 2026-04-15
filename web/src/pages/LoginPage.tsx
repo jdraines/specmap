@@ -65,7 +65,7 @@ export function LoginPage() {
       <div className="bg-[var(--surface-1)] border border-[var(--border)] p-8 max-w-sm w-full text-center">
         <div className="text-lg font-semibold text-[var(--text-primary)] mb-1">
           <span className="text-[var(--text-muted)]">&gt;</span> specmap
-          <span className="text-[var(--accent)]">_</span>
+          <span className="text-[var(--accent-text)]">_</span>
         </div>
         <p className="text-sm text-[var(--text-muted)] mb-1">review PRs with spec annotations</p>
         <p className="text-xs text-[var(--text-muted)] mb-6">

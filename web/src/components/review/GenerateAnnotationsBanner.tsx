@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
+import { Spinner } from '../ui/Spinner';
 
 interface GenerateAnnotationsBannerProps {
   owner: string;
@@ -77,7 +78,9 @@ export function GenerateAnnotationsBanner({
           {generating ? 'Generating...' : 'Generate Annotations'}
         </button>
         {generating && (
-          <span className="text-xs text-[var(--text-muted)]">This may take a moment...</span>
+          <span className="text-xs text-[var(--text-muted)]">
+            <Spinner /> Generating annotations...
+          </span>
         )}
       </div>
 
@@ -86,7 +89,7 @@ export function GenerateAnnotationsBanner({
           <p className="text-xs text-[var(--error-text)]">{generateError}</p>
           <button
             onClick={() => generateAnnotations(owner, repo, prNumber, mode)}
-            className="text-xs text-[var(--accent)] bg-transparent border-0 cursor-pointer underline"
+            className="text-xs text-[var(--accent-text)] bg-transparent border-0 cursor-pointer underline"
           >
             retry
           </button>
