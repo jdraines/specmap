@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { useParams } from 'react-router';
 import { Diff, Hunk, Decoration, getChangeKey, useSourceExpansion } from 'react-diff-view';
 import type { FileData, HunkData, ChangeData } from 'react-diff-view';
 import type { PullFile, Annotation } from '../../api/types';
 import { pulls } from '../../api/endpoints';
+import { useSpecPanelStore } from '../../stores/specPanelStore';
 import { FileHeader } from './FileHeader';
 import { AnnotationWidget } from './AnnotationWidget';
 import { SideAnnotation } from './SideAnnotation';
@@ -34,7 +34,8 @@ function findChangeForLine(hunks: HunkData[], line: number): ChangeData | null {
 }
 
 export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffFileProps) {
-  const { owner, repo, number } = useParams<{ owner: string; repo: string; number: string }>();
+  const fullName = useSpecPanelStore((s) => s.fullName);
+  const number = useSpecPanelStore((s) => s.prNumber);
   const [collapsed, setCollapsed] = useState(false);
   const [hoveredAnnId, setHoveredAnnId] = useState<string | null>(null);
   const [oldSource, setOldSource] = useState<string | null>(null);
@@ -60,11 +61,11 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
         expandRange(start, end);
         return;
       }
-      if (!owner || !repo || !number) return;
+      if (!fullName || !number) return;
       pendingExpand.current = [start, end];
       setSourceLoading(true);
       try {
-        const { content } = await pulls.fileSource(owner, repo, Number(number), file.filename);
+        const { content } = await pulls.fileSource(fullName, number, file.filename);
         setOldSource(content);
       } catch {
         pendingExpand.current = null;
@@ -72,7 +73,7 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
         setSourceLoading(false);
       }
     },
-    [oldSource, expandRange, owner, repo, number, file.filename],
+    [oldSource, expandRange, fullName, number, file.filename],
   );
 
   // Map: annotation id → change keys for all lines in its range
