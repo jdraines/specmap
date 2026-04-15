@@ -19,6 +19,7 @@ export interface Repository {
   private: boolean;
   created_at: string;
   updated_at: string;
+  recent_pulls?: PullRequest[];
 }
 
 export interface PullRequest {

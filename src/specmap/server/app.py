@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -372,10 +373,14 @@ def create_app(config: ServerConfig) -> FastAPI:
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
-        repos = await provider.list_repos(_http(request), token)
-        result = []
-        for r in repos:
-            db_repo = _db(request).upsert_repo(
+        http = _http(request)
+        db = _db(request)
+        repo_list = await provider.list_repos(http, token)
+
+        # Upsert all repos into DB
+        db_repos = []
+        for r in repo_list:
+            db_repo = db.upsert_repo(
                 provider=provider.name,
                 provider_id=r["id"],
                 owner=r["owner"],
@@ -383,7 +388,36 @@ def create_app(config: ServerConfig) -> FastAPI:
                 full_name=r["full_name"],
                 private=r["private"],
             )
-            result.append(_repo_response(db_repo))
+            db_repos.append(db_repo)
+
+        # Fetch recent PRs for all repos in parallel
+        async def _fetch_recent_pulls(r: dict) -> list[dict]:
+            try:
+                return await provider.list_pulls(
+                    http, token, r["owner"], r["name"], per_page=3,
+                )
+            except Exception:
+                return []
+
+        pulls_per_repo = await asyncio.gather(
+            *[_fetch_recent_pulls(r) for r in db_repos]
+        )
+
+        result = []
+        for db_repo, pulls in zip(db_repos, pulls_per_repo):
+            recent = [_pull_response(
+                db.upsert_pull(
+                    repository_id=db_repo["id"],
+                    number=p["number"],
+                    title=p["title"],
+                    state=p["state"],
+                    head_branch=p["head_branch"],
+                    base_branch=p["base_branch"],
+                    head_sha=p["head_sha"],
+                    author_login=p["author_login"],
+                )
+            ) for p in pulls]
+            result.append(_repo_response(db_repo, recent_pulls=recent))
         return result
 
     @app.get("/api/v1/repos/{owner}/{repo}")
@@ -844,8 +878,8 @@ def create_app(config: ServerConfig) -> FastAPI:
             "updated_at": u["updated_at"],
         }
 
-    def _repo_response(r: dict) -> dict:
-        return {
+    def _repo_response(r: dict, *, recent_pulls: list[dict] | None = None) -> dict:
+        resp = {
             "id": r["id"],
             "provider": r["provider"],
             "provider_id": r["provider_id"],
@@ -856,6 +890,9 @@ def create_app(config: ServerConfig) -> FastAPI:
             "created_at": r["created_at"],
             "updated_at": r["updated_at"],
         }
+        if recent_pulls is not None:
+            resp["recent_pulls"] = recent_pulls
+        return resp
 
     def _pull_response(p: dict) -> dict:
         return {
