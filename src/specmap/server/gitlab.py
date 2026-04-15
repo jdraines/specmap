@@ -284,6 +284,6 @@ class GitLabProvider:
             "state": mr["state"],
             "head_branch": mr["source_branch"],
             "base_branch": mr["target_branch"],
-            "head_sha": mr.get("sha", ""),
+            "head_sha": mr.get("sha") or "",
             "author_login": mr.get("author", {}).get("username", ""),
         }
