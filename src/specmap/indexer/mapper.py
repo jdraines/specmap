@@ -85,16 +85,16 @@ class Mapper:
                 if deadline is not None and time.monotonic() > deadline:
                     break
 
-                if on_progress is not None:
-                    result = on_progress(batch_idx + 1, len(batches))
-                    if result is not None:
-                        await result
-
                 annotations = await self._process_single_batch(
                     batch_files, grouped, file_contents, spec_sections, context,
                 )
                 all_annotations.extend(annotations)
                 self.completed_batches = batch_idx + 1
+
+                if on_progress is not None:
+                    result = on_progress(batch_idx + 1, len(batches))
+                    if result is not None:
+                        await result
 
         return all_annotations
 
