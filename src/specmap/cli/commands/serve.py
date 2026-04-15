@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 import threading
 import webbrowser
 
@@ -12,6 +13,30 @@ import typer
 from specmap.cli import app
 
 serve_app = typer.Typer()
+
+
+def _port_is_free(host: str, port: int) -> bool:
+    """Check whether a TCP port is available to bind."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+def _find_open_port(host: str, preferred: int, max_attempts: int = 20) -> int:
+    """Return *preferred* if free, otherwise scan upward for an open port."""
+    if _port_is_free(host, preferred):
+        return preferred
+    for offset in range(1, max_attempts + 1):
+        candidate = preferred + offset
+        if _port_is_free(host, candidate):
+            return candidate
+    # Last resort: let the OS pick
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
 
 
 def _open_browser_after_delay(url: str, delay: float = 0.8):
@@ -145,13 +170,19 @@ def serve(
     if model and not os.environ.get("SPECMAP_MODEL"):
         os.environ["SPECMAP_MODEL"] = model
 
+    actual_port = _find_open_port(host, port)
+    if actual_port != port:
+        logging.getLogger("specmap.server").info(
+            "Port %d in use, using %d instead", port, actual_port
+        )
+
     config = ServerConfig.from_env(
-        port=str(port), host=host, database_path=db, static_dir=resolved_static
+        port=str(actual_port), host=host, database_path=db, static_dir=resolved_static
     )
 
     # Auto-open browser when serving a frontend (not a bare API)
     if resolved_static and not no_open:
-        url = f"http://{'localhost' if host in ('0.0.0.0', '127.0.0.1') else host}:{port}"
+        url = f"http://{'localhost' if host in ('0.0.0.0', '127.0.0.1') else host}:{actual_port}"
         _open_browser_after_delay(url)
 
     if reload:
