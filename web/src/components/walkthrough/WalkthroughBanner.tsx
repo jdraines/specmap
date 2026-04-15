@@ -68,7 +68,7 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
 
           <div className="flex flex-wrap items-center gap-4 mb-3">
             <div className="flex items-center gap-1">
-              <span className="text-xs font-semibold text-white mr-1">familiarity:</span>
+              <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">familiarity:</span>
               {familiarityOptions.map((opt) => (
                 <button
                   key={opt.value}
@@ -85,7 +85,7 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
             </div>
 
             <div className="flex items-center gap-1">
-              <span className="text-xs font-semibold text-white mr-1">depth:</span>
+              <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">depth:</span>
               {depthOptions.map((opt) => (
                 <button
                   key={opt.value}

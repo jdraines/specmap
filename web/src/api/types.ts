@@ -72,6 +72,9 @@ export interface SpecmapFile {
   updated_by: string;
   annotations: Annotation[];
   ignore_patterns: string[];
+  partial?: boolean;
+  completed_batches?: number;
+  total_batches?: number;
 }
 
 export interface SpecContent {

@@ -667,13 +667,15 @@ def create_app(config: ServerConfig) -> FastAPI:
         mode = body.get("mode", "full")
         force = body.get("force", False)
         req_timeout = body.get("timeout")
+        resume = body.get("resume", False)
+        concurrency = max(1, min(8, int(body.get("concurrency", 4))))
 
         if mode not in ("lite", "full"):
             raise HTTPError(400, 'mode must be "lite" or "full"')
 
         # Resolve timeout: request body → config → default
         if req_timeout is not None:
-            annotate_timeout = max(30, min(600, int(req_timeout)))
+            annotate_timeout = max(30, min(1800, int(req_timeout)))
         else:
             annotate_timeout = cfg.annotate_timeout
 
@@ -701,12 +703,23 @@ def create_app(config: ServerConfig) -> FastAPI:
         head_sha = db_pull["head_sha"]
 
         # Check cache — return plain JSON (not SSE)
-        if not force:
+        if not force and not resume:
             cached = db.get_mapping_cache(db_pull["id"], head_sha)
             if cached:
                 cached_data = json.loads(cached)
-                if cached_data.get("annotations"):
+                if cached_data.get("annotations") and not cached_data.get("partial"):
                     return cached_data
+
+        # Resume support: load cached partial result and extract already-annotated files
+        exclude_files: set[str] | None = None
+        cached_annotations: list[dict] = []
+        if resume:
+            cached = db.get_mapping_cache(db_pull["id"], head_sha)
+            if cached:
+                cached_data = json.loads(cached)
+                cached_annotations = cached_data.get("annotations", [])
+                if cached_annotations:
+                    exclude_files = {ann["file"] for ann in cached_annotations}
 
         # Fetch PR files
         pr_files = await provider.list_pull_files(
@@ -734,6 +747,8 @@ def create_app(config: ServerConfig) -> FastAPI:
                             cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
                             annotate_timeout=annotate_timeout,
                             on_progress=on_progress,
+                            exclude_files=exclude_files,
+                            concurrency=concurrency,
                         )
                     else:
                         result = await generate_full(
@@ -744,10 +759,25 @@ def create_app(config: ServerConfig) -> FastAPI:
                             pr_title=db_pull["title"],
                             annotate_timeout=annotate_timeout,
                             on_progress=on_progress,
+                            exclude_files=exclude_files,
+                            concurrency=concurrency,
                         )
+
+                    # Merge with cached annotations on resume
+                    if cached_annotations:
+                        new_files = {ann["file"] for ann in result.get("annotations", [])}
+                        merged = [ann for ann in cached_annotations if ann["file"] not in new_files]
+                        merged.extend(result.get("annotations", []))
+                        result["annotations"] = merged
+                        # If no longer partial, clear the flag
+                        if not result.get("partial"):
+                            result.pop("partial", None)
+                            result.pop("completed_batches", None)
+                            result.pop("total_batches", None)
+
                     await progress_queue.put(("complete", result))
                 except (TimeoutError, asyncio.CancelledError):
-                    await progress_queue.put(("error", {"message": "Annotation generation timed out — the PR may be too large. Try 'lite' mode."}))
+                    await progress_queue.put(("error", {"message": "Annotation generation timed out — the PR may be too large. Try 'lite' mode or increase timeout."}))
                 except Exception as e:
                     await progress_queue.put(("error", {"message": str(e)}))
 
