@@ -5,7 +5,11 @@
       "*",
       "Bash(uv venv:*)",
       "Bash(docs/.venv/bin/pip install:*)",
-      "Bash(just docs-install:*)"
+      "Bash(just docs-install:*)",
+      "Bash(xargs cat:*)",
+      "Bash(rm -rf dist core/web/dist)",
+      "Bash(rm -rf web/dist)",
+      "Bash(uv build:*)"
     ]
   },
   "defaultMode": "bypassPermissions"

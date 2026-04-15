@@ -10,7 +10,7 @@ class CustomBuildHook(BuildHookInterface):
     PLUGIN_NAME = "custom"
 
     def initialize(self, version, build_data):
-        web_dir = os.path.join(self.root, "..", "web")
+        web_dir = os.path.join(self.root, "web")
         web_dist = os.path.join(web_dir, "dist")
 
         # Build frontend if source exists but dist doesn't

@@ -191,7 +191,7 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
         return hunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />);
       }
 
-      const elements: React.ReactNode[] = [];
+      const elements: React.ReactElement[] = [];
 
       hunks.forEach((hunk, i) => {
         // Gap before this hunk

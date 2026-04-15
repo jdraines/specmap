@@ -89,7 +89,6 @@ export function useAnnotationSpacers(
 
     for (let i = 1; i < sorted.length; i++) {
       const prev = sorted[i - 1];
-      const curr = sorted[i];
       const prevKey = anchorKeys[i - 1];
       const currKey = anchorKeys[i];
       if (!prevKey || !currKey) continue;
