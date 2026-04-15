@@ -69,7 +69,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
 
           <div className="flex flex-wrap items-center gap-4 mb-3">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-[var(--text-muted)] mr-1">familiarity:</span>
+              <span className="text-xs text-[var(--wt-border)] mr-1">familiarity:</span>
               {familiarityOptions.map((opt) => (
                 <button
                   key={opt.value}
@@ -86,7 +86,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
             </div>
 
             <div className="flex items-center gap-1">
-              <span className="text-xs text-[var(--text-muted)] mr-1">depth:</span>
+              <span className="text-xs text-[var(--wt-border)] mr-1">depth:</span>
               {depthOptions.map((opt) => (
                 <button
                   key={opt.value}
