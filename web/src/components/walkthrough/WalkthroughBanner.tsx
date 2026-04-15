@@ -1,4 +1,5 @@
 import { useWalkthroughStore } from '../../stores/walkthroughStore';
+import { renderTextWithBold } from './WalkthroughStepCard';
 import { Spinner } from '../ui/Spinner';
 
 interface WalkthroughBannerProps {
@@ -47,7 +48,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
     >
       {walkthrough ? (
         <>
-          <p className="text-sm text-[var(--text-primary)] mb-3">{walkthrough.summary}</p>
+          <p className="text-sm text-[var(--text-primary)] mb-3">{renderTextWithBold(walkthrough.summary, 'summary')}</p>
           <div className="flex items-center gap-3">
             <button
               onClick={start}
