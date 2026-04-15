@@ -6,8 +6,8 @@ Specmap uses **two version groups** that release independently.
 
 | Group | Components | Source of truth | Git tag |
 |-------|-----------|----------------|---------|
-| **core** | Python library, CLI, MCP server | `core/pyproject.toml` | `core/v0.1.0` |
-| **web** | Python API + React frontend | `core/pyproject.toml` | `web/v0.1.0` |
+| **core** | Python library, CLI, MCP server | `pyproject.toml` | `core/v0.1.0` |
+| **web** | Python API + React frontend | `pyproject.toml` | `web/v0.1.0` |
 
 ### Why two groups?
 
@@ -35,8 +35,8 @@ just versions
 
 ```bash
 # Bump core (updates pyproject.toml)
-just core-version 0.2.0
-git tag core/v0.2.0
+just version 0.2.0
+git tag v0.2.0
 
 # Bump web (updates api/VERSION)
 just web-version 0.2.0

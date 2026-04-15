@@ -209,7 +209,7 @@ You can also run specmap directly. The pip/uv install bundles the frontend — n
 
 ```bash
 # Install
-uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
+uv tool install git+https://github.com/jdraines/specmap.git
 
 # Run (frontend is bundled in the package)
 cd /path/to/your-repo

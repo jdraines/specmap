@@ -2003,7 +2003,7 @@ wheels = [
 
 [[package]]
 name = "specmap"
-version = "0.1.0"
+version = "0.2.4"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

@@ -13,7 +13,7 @@ if str(_tests_dir) not in sys.path:
     sys.path.insert(0, str(_tests_dir))
 
 # Ensure core/src is importable (specmap package)
-_core_src = Path(__file__).resolve().parent.parent / "core" / "src"
+_core_src = Path(__file__).resolve().parent.parent / "src"
 if str(_core_src) not in sys.path:
     sys.path.insert(0, str(_core_src))
 

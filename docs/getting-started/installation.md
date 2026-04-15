@@ -12,7 +12,7 @@
 The simplest way to install is as a global tool via `uv`:
 
 ```bash
-uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
+uv tool install git+https://github.com/jdraines/specmap.git
 ```
 
 This makes the `specmap` command available everywhere:
@@ -27,7 +27,7 @@ specmap validate
 Use `uvx` to run specmap commands without a permanent install:
 
 ```bash
-uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core' specmap status
+uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git' specmap status
 ```
 
 ### Alternative: add as a Python project dependency
@@ -39,14 +39,14 @@ If your project uses Python, add specmap to your dependencies:
     ```toml
     [project]
     dependencies = [
-        "specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core",
+        "specmap @ git+https://github.com/jdraines/specmap.git",
     ]
     ```
 
 === "requirements.txt"
 
     ```
-    specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core
+    specmap @ git+https://github.com/jdraines/specmap.git
     ```
 
 Then `specmap` is available in your project's virtualenv.
@@ -63,7 +63,7 @@ Create or edit `.mcp.json` in your project root:
     "specmap": {
       "command": "uvx",
       "args": [
-        "--from", "specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core",
+        "--from", "specmap @ git+https://github.com/jdraines/specmap.git",
         "python", "-m", "specmap.mcp"
       ],
       "env": {
@@ -97,7 +97,7 @@ If you installed specmap as a `uv tool`, you can use the simpler form:
 Specmap uses the standard MCP stdio transport. Any client that supports stdio-based MCP servers can connect. The server is started by running the `specmap.mcp` module:
 
 ```bash
-uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git#subdirectory=core' python -m specmap.mcp
+uvx --from 'specmap @ git+https://github.com/jdraines/specmap.git' python -m specmap.mcp
 ```
 
 ## Verify Installation

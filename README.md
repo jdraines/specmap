@@ -26,7 +26,7 @@ No need to clone this repo. Install as a tool and use it in any project:
 
 ```bash
 # Install
-uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
+uv tool install git+https://github.com/jdraines/specmap.git
 
 # Verify
 specmap --version
