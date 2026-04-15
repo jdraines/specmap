@@ -31,7 +31,7 @@ export function WalkthroughNav() {
         Step {currentStep + 1} of {total}
       </span>
 
-      <span className="text-xs text-[var(--wt-nav-text)] truncate flex-1 min-w-0">
+      <span className="text-xs font-medium text-[var(--wt-nav-text)] truncate flex-1 min-w-0">
         {step?.title}
       </span>
 
@@ -39,14 +39,14 @@ export function WalkthroughNav() {
         <button
           onClick={prevStep}
           disabled={currentStep === 0}
-          className="px-2 py-1 text-xs bg-transparent text-[var(--wt-nav-text)] border border-[var(--wt-nav-dot)] cursor-pointer hover:bg-[color-mix(in_srgb,var(--wt-nav-dot)_15%,transparent)] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-2 py-1 text-xs font-medium bg-transparent text-[var(--wt-nav-text)] border border-[var(--wt-nav-dot)] cursor-pointer hover:bg-[color-mix(in_srgb,var(--wt-nav-dot)_15%,transparent)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Prev
         </button>
         <button
           onClick={nextStep}
           disabled={currentStep >= total - 1}
-          className="px-2 py-1 text-xs bg-transparent text-[var(--wt-nav-text)] border border-[var(--wt-nav-dot)] cursor-pointer hover:bg-[color-mix(in_srgb,var(--wt-nav-dot)_15%,transparent)] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-2 py-1 text-xs font-medium bg-transparent text-[var(--wt-nav-text)] border border-[var(--wt-nav-dot)] cursor-pointer hover:bg-[color-mix(in_srgb,var(--wt-nav-dot)_15%,transparent)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Next
         </button>

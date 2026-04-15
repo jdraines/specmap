@@ -52,7 +52,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
           <div className="flex items-center gap-3">
             <button
               onClick={start}
-              className="px-3 py-1.5 text-xs bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90"
+              className="px-3 py-1.5 text-xs font-semibold bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90"
             >
               Start Walkthrough ({walkthrough.steps.length} steps)
             </button>
@@ -63,18 +63,18 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
         </>
       ) : (
         <>
-          <p className="text-sm text-[var(--text-secondary)] mb-3">
+          <p className="text-sm font-medium text-[var(--text-secondary)] mb-3">
             Get a guided walkthrough of this PR tailored to your familiarity with the codebase.
           </p>
 
           <div className="flex flex-wrap items-center gap-4 mb-3">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-[var(--wt-border)] mr-1">familiarity:</span>
+              <span className="text-xs font-semibold text-white mr-1">familiarity:</span>
               {familiarityOptions.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setFamiliarity(opt.value)}
-                  className={`px-2 py-1 text-xs border cursor-pointer ${
+                  className={`px-2 py-1 text-xs font-medium border cursor-pointer ${
                     familiarity === opt.value
                       ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
                       : 'bg-[var(--surface-1)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--text-muted)]'
@@ -86,12 +86,12 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
             </div>
 
             <div className="flex items-center gap-1">
-              <span className="text-xs text-[var(--wt-border)] mr-1">depth:</span>
+              <span className="text-xs font-semibold text-white mr-1">depth:</span>
               {depthOptions.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setDepth(opt.value)}
-                  className={`px-2 py-1 text-xs border cursor-pointer ${
+                  className={`px-2 py-1 text-xs font-medium border cursor-pointer ${
                     depth === opt.value
                       ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
                       : 'bg-[var(--surface-1)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--text-muted)]'
@@ -107,7 +107,7 @@ export function WalkthroughBanner({ owner, repo, prNumber, hasAnnotations }: Wal
             <button
               onClick={() => generate(owner, repo, prNumber)}
               disabled={loading}
-              className="px-3 py-1.5 text-xs bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-xs font-semibold bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Generating...' : 'Generate Walkthrough'}
             </button>
