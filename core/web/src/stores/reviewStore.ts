@@ -33,7 +33,7 @@ function buildAnnotationsByFile(annotations: Annotation[]): Map<string, Annotati
   return byFile;
 }
 
-export const useReviewStore = create<ReviewState>((set, get) => ({
+export const useReviewStore = create<ReviewState>((set, _get) => ({
   pr: null,
   files: [],
   specmapFile: null,
