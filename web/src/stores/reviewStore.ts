@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PullRequest, PullFile, SpecmapFile, Annotation } from '../api/types';
+import type { PullRequest, PullFile, SpecmapFile, Annotation, GenerateProgress } from '../api/types';
 import { pulls, capabilities } from '../api/endpoints';
 
 interface ReviewState {
@@ -11,6 +11,7 @@ interface ReviewState {
   error: string | null;
   generating: boolean;
   generateError: string | null;
+  generateProgress: GenerateProgress | null;
   canGenerate: boolean;
   clearingCache: boolean;
   fetchReview: (owner: string, repo: string, number: number) => Promise<void>;
@@ -20,6 +21,7 @@ interface ReviewState {
     number: number,
     mode?: 'lite' | 'full',
     force?: boolean,
+    timeout?: number,
   ) => Promise<void>;
   clearCache: (owner: string, repo: string, number: number) => Promise<void>;
   checkCanGenerate: () => Promise<void>;
@@ -44,6 +46,7 @@ export const useReviewStore = create<ReviewState>((set) => ({
   error: null,
   generating: false,
   generateError: null,
+  generateProgress: null,
   canGenerate: false,
   clearingCache: false,
   fetchReview: async (owner, repo, number) => {
@@ -66,14 +69,18 @@ export const useReviewStore = create<ReviewState>((set) => ({
       set({ error: String(err), loading: false });
     }
   },
-  generateAnnotations: async (owner, repo, number, mode = 'full', force = false) => {
-    set({ generating: true, generateError: null });
+  generateAnnotations: async (owner, repo, number, mode = 'full', force = false, timeout?: number) => {
+    set({ generating: true, generateError: null, generateProgress: null });
     try {
-      const specmap = await pulls.generateAnnotations(owner, repo, number, mode, force);
+      const specmap = await pulls.generateAnnotations(
+        owner, repo, number, mode, force, timeout,
+        (progress) => set({ generateProgress: progress }),
+      );
       set({
         specmapFile: specmap,
         annotationsByFile: buildAnnotationsByFile(specmap.annotations ?? []),
         generating: false,
+        generateProgress: null,
       });
     } catch (e) {
       let msg: string;
@@ -82,7 +89,7 @@ export const useReviewStore = create<ReviewState>((set) => ({
       } else {
         msg = e instanceof Error ? e.message : 'Failed to generate annotations';
       }
-      set({ generateError: msg, generating: false });
+      set({ generateError: msg, generating: false, generateProgress: null });
     }
   },
   clearCache: async (owner, repo, number) => {

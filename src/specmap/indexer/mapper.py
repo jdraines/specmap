@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from specmap.indexer.code_analyzer import CodeChange
@@ -26,6 +27,7 @@ class Mapper:
         spec_contents: dict[str, str],
         context: str | None = None,
         batch_token_budget: int = 0,
+        on_progress: Callable[[int, int], Awaitable[None] | None] | None = None,
     ) -> list[Annotation]:
         """Generate annotations for code changes.
 
@@ -58,7 +60,11 @@ class Mapper:
         # Build batches of file groups
         batches = _build_batches(grouped, batch_token_budget)
 
-        for batch_files in batches:
+        for batch_idx, batch_files in enumerate(batches):
+            if on_progress is not None:
+                result = on_progress(batch_idx + 1, len(batches))
+                if result is not None:
+                    await result
             code_change_dicts = []
             batch_label_parts = []
             for file_path in batch_files:

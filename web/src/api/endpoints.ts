@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch, apiFetchSSE } from './client';
 import type {
   User,
   Repository,
@@ -9,6 +9,7 @@ import type {
   AuthStatus,
   Walkthrough,
   Capabilities,
+  GenerateProgress,
 } from './types';
 
 export const auth = {
@@ -46,14 +47,14 @@ export const pulls = {
     number: number,
     mode: 'lite' | 'full' = 'full',
     force: boolean = false,
+    timeout?: number,
+    onProgress?: (data: GenerateProgress) => void,
   ) =>
-    apiFetch<SpecmapFile>(
+    apiFetchSSE(
       `/api/v1/repos/${owner}/${repo}/pulls/${number}/generate-annotations`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ mode, force }),
-      },
-      180_000,
+      { mode, force, timeout },
+      onProgress ?? (() => {}),
+      ((timeout ?? 120) * 1000) + 60_000,
     ),
   clearCache: (owner: string, repo: string, number: number) =>
     apiFetch<{ status: string }>(

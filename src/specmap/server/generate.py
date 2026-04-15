@@ -8,6 +8,7 @@ import json
 import logging
 import subprocess
 import tempfile
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from specmap.config import (
@@ -42,6 +43,8 @@ async def generate_lite(
     llm_model: str,
     llm_api_key: str,
     llm_api_base: str,
+    annotate_timeout: int = _ANNOTATE_TIMEOUT,
+    on_progress: Callable[[dict], Awaitable[None]] | None = None,
 ) -> dict:
     """Generate annotations using forge APIs + LLM (no git clone)."""
     from specmap.server.forge import ForgeNotFound
@@ -112,6 +115,13 @@ async def generate_lite(
         return _build_result(head_branch, base_branch, head_sha, [])
 
     # 5. Call Mapper
+    if on_progress:
+        await on_progress({"phase": "annotating", "detail": "Annotating code changes..."})
+
+    async def _batch_progress(batch: int, total: int) -> None:
+        if on_progress:
+            await on_progress({"phase": "annotating", "batch": batch, "total_batches": total})
+
     config = SpecmapConfig(
         model=llm_model,
         api_key=llm_api_key,
@@ -119,8 +129,12 @@ async def generate_lite(
     )
     llm_client = LLMClient(config)
     mapper = Mapper(llm_client, repo_root="")
-    annotations = await mapper.annotate_changes(
-        changes, spec_contents, batch_token_budget=8000
+    annotations = await asyncio.wait_for(
+        mapper.annotate_changes(
+            changes, spec_contents, batch_token_budget=8000,
+            on_progress=_batch_progress,
+        ),
+        timeout=annotate_timeout,
     )
 
     # 6. Build result
@@ -142,12 +156,16 @@ async def generate_full(
     llm_api_key: str,
     llm_api_base: str,
     pr_title: str = "",
+    annotate_timeout: int = _ANNOTATE_TIMEOUT,
+    on_progress: Callable[[dict], Awaitable[None]] | None = None,
 ) -> dict:
     """Generate annotations by cloning repo and running the full annotate() pipeline."""
     clone = provider.clone_url(owner, repo, token)
 
     with tempfile.TemporaryDirectory(prefix="specmap-gen-") as tmpdir:
         # 1. Shallow clone
+        if on_progress:
+            await on_progress({"phase": "cloning", "detail": "Cloning repository..."})
         await asyncio.wait_for(
             asyncio.to_thread(
                 _clone_repo, clone, head_branch, tmpdir
@@ -156,6 +174,8 @@ async def generate_full(
         )
 
         # 2. LLM context pre-pass
+        if on_progress:
+            await on_progress({"phase": "context", "detail": "Analyzing PR context..."})
         config = SpecmapConfig(
             model=llm_model,
             api_key=llm_api_key,
@@ -174,6 +194,13 @@ async def generate_full(
 
         # 4. Call annotate() with timeout
         from specmap.tools.annotate import annotate
+
+        if on_progress:
+            await on_progress({"phase": "annotating", "detail": "Annotating code changes..."})
+
+        async def _batch_progress(batch: int, total: int) -> None:
+            if on_progress:
+                await on_progress({"phase": "annotating", "batch": batch, "total_batches": total})
 
         # Set env vars so SpecmapConfig.load() inside annotate() picks up LLM config
         import os
@@ -196,8 +223,9 @@ async def generate_full(
                     code_changes=changed_files if changed_files else None,
                     branch=head_branch,
                     context=context,
+                    on_progress=_batch_progress,
                 ),
-                timeout=_ANNOTATE_TIMEOUT,
+                timeout=annotate_timeout,
             )
         finally:
             for k, v in env_backup.items():

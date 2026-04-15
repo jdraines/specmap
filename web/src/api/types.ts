@@ -110,3 +110,10 @@ export interface Capabilities {
   walkthrough: boolean;
   annotations: boolean;
 }
+
+export interface GenerateProgress {
+  phase: 'starting' | 'cloning' | 'context' | 'annotating';
+  batch?: number;
+  total_batches?: number;
+  detail?: string;
+}
