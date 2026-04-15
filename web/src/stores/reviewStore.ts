@@ -12,6 +12,7 @@ interface ReviewState {
   generating: boolean;
   generateError: string | null;
   canGenerate: boolean;
+  clearingCache: boolean;
   fetchReview: (owner: string, repo: string, number: number) => Promise<void>;
   generateAnnotations: (
     owner: string,
@@ -20,6 +21,7 @@ interface ReviewState {
     mode?: 'lite' | 'full',
     force?: boolean,
   ) => Promise<void>;
+  clearCache: (owner: string, repo: string, number: number) => Promise<void>;
   checkCanGenerate: () => Promise<void>;
 }
 
@@ -33,7 +35,7 @@ function buildAnnotationsByFile(annotations: Annotation[]): Map<string, Annotati
   return byFile;
 }
 
-export const useReviewStore = create<ReviewState>((set, _get) => ({
+export const useReviewStore = create<ReviewState>((set) => ({
   pr: null,
   files: [],
   specmapFile: null,
@@ -43,6 +45,7 @@ export const useReviewStore = create<ReviewState>((set, _get) => ({
   generating: false,
   generateError: null,
   canGenerate: false,
+  clearingCache: false,
   fetchReview: async (owner, repo, number) => {
     set({ loading: true, error: null });
     try {
@@ -73,8 +76,29 @@ export const useReviewStore = create<ReviewState>((set, _get) => ({
         generating: false,
       });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to generate annotations';
+      let msg: string;
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        msg = "Generation timed out — the PR may be too large. Try 'lite' mode.";
+      } else {
+        msg = e instanceof Error ? e.message : 'Failed to generate annotations';
+      }
       set({ generateError: msg, generating: false });
+    }
+  },
+  clearCache: async (owner, repo, number) => {
+    set({ clearingCache: true });
+    try {
+      await pulls.clearCache(owner, repo, number);
+      set({
+        specmapFile: null,
+        annotationsByFile: new Map(),
+        clearingCache: false,
+      });
+      // Also reset walkthrough store
+      const { useWalkthroughStore } = await import('./walkthroughStore');
+      useWalkthroughStore.getState().reset();
+    } catch {
+      set({ clearingCache: false });
     }
   },
   checkCanGenerate: async () => {

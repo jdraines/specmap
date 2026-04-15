@@ -20,21 +20,36 @@ export function GenerateAnnotationsBanner({
   prNumber,
   hasAnnotations,
 }: GenerateAnnotationsBannerProps) {
-  const { generating, generateError, canGenerate, generateAnnotations } = useReviewStore();
+  const { generating, generateError, canGenerate, generateAnnotations, clearCache, clearingCache } =
+    useReviewStore();
   const [mode, setMode] = useState<'lite' | 'full'>('full');
 
   if (!canGenerate) return null;
 
-  // Existing annotations: show small regenerate link
+  // Existing annotations: show small regenerate link + clear cache button
   if (hasAnnotations) {
     return (
       <div className="flex items-center gap-2 mb-4 px-1">
         <button
           onClick={() => generateAnnotations(owner, repo, prNumber, mode, true)}
-          disabled={generating}
+          disabled={generating || clearingCache}
           className="text-xs text-[var(--text-muted)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {generating ? 'Regenerating...' : 'Regenerate annotations'}
+          {generating ? (
+            <>
+              <Spinner /> Regenerating...
+            </>
+          ) : (
+            'Regenerate annotations'
+          )}
+        </button>
+        <span className="text-xs text-[var(--text-muted)]">·</span>
+        <button
+          onClick={() => clearCache(owner, repo, prNumber)}
+          disabled={generating || clearingCache}
+          className="text-xs text-[var(--text-muted)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--error-text)] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {clearingCache ? 'Clearing...' : 'Clear cache'}
         </button>
         {generateError && (
           <span className="text-xs text-[var(--error-text)]">{generateError}</span>

@@ -47,10 +47,19 @@ export const pulls = {
     mode: 'lite' | 'full' = 'full',
     force: boolean = false,
   ) =>
-    apiFetch<SpecmapFile>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/generate-annotations`, {
-      method: 'POST',
-      body: JSON.stringify({ mode, force }),
-    }),
+    apiFetch<SpecmapFile>(
+      `/api/v1/repos/${owner}/${repo}/pulls/${number}/generate-annotations`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ mode, force }),
+      },
+      180_000,
+    ),
+  clearCache: (owner: string, repo: string, number: number) =>
+    apiFetch<{ status: string }>(
+      `/api/v1/repos/${owner}/${repo}/pulls/${number}/cache`,
+      { method: 'DELETE' },
+    ),
 };
 
 export const specs = {
@@ -64,8 +73,12 @@ export const capabilities = {
 
 export const walkthrough = {
   generate: (owner: string, repo: string, number: number, familiarity: number, depth: string) =>
-    apiFetch<Walkthrough>(`/api/v1/repos/${owner}/${repo}/pulls/${number}/walkthrough`, {
-      method: 'POST',
-      body: JSON.stringify({ familiarity, depth }),
-    }),
+    apiFetch<Walkthrough>(
+      `/api/v1/repos/${owner}/${repo}/pulls/${number}/walkthrough`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ familiarity, depth }),
+      },
+      120_000,
+    ),
 };

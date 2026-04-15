@@ -213,6 +213,18 @@ class Database:
         )
         self.conn.commit()
 
+    def delete_mapping_cache(self, pull_request_id: int):
+        self.conn.execute(
+            "DELETE FROM mapping_cache WHERE pull_request_id = ?", (pull_request_id,)
+        )
+        self.conn.commit()
+
+    def delete_walkthrough_cache(self, pull_request_id: int):
+        self.conn.execute(
+            "DELETE FROM walkthrough_cache WHERE pull_request_id = ?", (pull_request_id,)
+        )
+        self.conn.commit()
+
     # --- Walkthrough Cache ---
 
     def get_walkthrough_cache(
