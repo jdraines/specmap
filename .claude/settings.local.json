@@ -9,7 +9,8 @@
       "Bash(xargs cat:*)",
       "Bash(rm -rf dist core/web/dist)",
       "Bash(rm -rf web/dist)",
-      "Bash(uv build:*)"
+      "Bash(uv build:*)",
+      "Bash(npx tsc:*)"
     ]
   },
   "defaultMode": "bypassPermissions"
