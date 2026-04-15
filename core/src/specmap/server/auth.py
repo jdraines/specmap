@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode
 
 import jwt
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -13,15 +12,17 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 COOKIE_SESSION = "specmap_session"
 COOKIE_OAUTH_STATE = "specmap_oauth_state"
 SESSION_DURATION = timedelta(hours=1)
-GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 
 
-def create_jwt(user_id: int, login: str, avatar_url: str, secret: str) -> str:
+def create_jwt(
+    user_id: int, login: str, avatar_url: str, provider: str, secret: str
+) -> str:
     now = datetime.now(UTC)
     payload = {
         "uid": user_id,
         "login": login,
         "avatar": avatar_url,
+        "provider": provider,
         "iss": "specmap",
         "iat": now,
         "exp": now + SESSION_DURATION,
@@ -49,16 +50,9 @@ def decrypt_token(data: bytes, hex_key: str) -> str:
     return aesgcm.decrypt(nonce, ciphertext, None).decode()
 
 
-def login_url(base_url: str, client_id: str) -> tuple[str, str]:
-    """Return (authorize_url, state_value)."""
-    state = secrets.token_urlsafe(32)
-    params = {
-        "client_id": client_id,
-        "redirect_uri": f"{base_url}/api/v1/auth/callback",
-        "scope": "repo",
-        "state": state,
-    }
-    return f"{GITHUB_AUTHORIZE_URL}?{urlencode(params)}", state
+def generate_secret(length: int = 32) -> str:
+    """Generate a random hex secret of the given byte length."""
+    return secrets.token_hex(length)
 
 
 def session_cookie_kwargs(secure: bool) -> dict:

@@ -28,10 +28,7 @@ export function DashboardPage() {
       {repoList.length === 0 ? (
         <div className="text-sm text-[var(--text-muted)] border border-[var(--border)] p-4">
           <p className="mb-2">No repositories found.</p>
-          <p>
-            The specmap GitHub App may not be installed on any of your repositories.
-            Go to your GitHub settings to install the App and select which repositories to grant access to.
-          </p>
+          <p>Check that your token has access to repositories.</p>
         </div>
       ) : (
         <div className="border border-[var(--border)] divide-y divide-[var(--border)]">

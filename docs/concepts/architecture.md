@@ -77,23 +77,31 @@ graph TB
         Web[React SPA]
         API[Python API<br/>FastAPI :8080]
         DB[(SQLite)]
+        Detect[Forge Auto-Detection]
     end
 
-    subgraph "GitHub"
-        OAuth[GitHub OAuth]
-        Contents[Contents API]
-        PR[Pull Requests]
+    subgraph "Forge Provider"
+        ForgeAuth[OAuth / PAT Auth]
+        ForgeAPI[Repository API]
+        ForgePR[Pull Requests / MRs]
     end
 
     Agent -->|MCP stdio| MCP
     Vite -->|proxy /api| API
     Web -->|REST| API
     API -->|read/write| DB
-    API -->|OAuth token exchange| OAuth
-    API -->|fetch .specmap/ + specs| Contents
+    Detect -->|git remote| API
+    API -->|authenticate| ForgeAuth
+    API -->|fetch .specmap/ + specs| ForgeAPI
+    API -->|list PRs/MRs, diffs| ForgePR
 ```
 
-Phase 2 adds a read-only web UI for reviewing PRs with spec annotations. Reviewers log in with GitHub, browse repos and PRs, and see diffs with annotation widgets inline. Clicking a `[N]` citation opens the spec content in a side panel.
+Phase 2 adds a read-only web UI for reviewing PRs with spec annotations. The server auto-detects the forge provider (GitHub or GitLab) from `git remote origin` and supports two auth modes:
+
+- **PAT mode** (default): Server pre-authenticates on startup using a personal access token from an environment variable or CLI tool (`gh`/`glab`). No login page needed.
+- **OAuth mode**: For enterprise environments that restrict PATs. Users authenticate via OAuth in the browser.
+
+Reviewers browse repos and PRs/MRs and see diffs with annotation widgets inline. Clicking a `[N]` citation opens the spec content in a side panel.
 
 UI capabilities:
 
@@ -104,6 +112,6 @@ UI capabilities:
 - **Hover cross-highlighting** — hovering an annotation highlights its code lines and vice versa
 - **File-source API** — `GET /api/v1/repos/{owner}/{repo}/pulls/{number}/file-source?path=...` returns raw file content for hunk expansion
 
-The API server fetches `.specmap/{branch}.json` from the repo via the GitHub Contents API and caches the result in SQLite. Spec file content is fetched on demand when a reviewer opens a citation.
+The API server fetches `.specmap/{branch}.json` from the repo via the forge's file/contents API and caches the result in SQLite. Spec file content is fetched on demand when a reviewer opens a citation.
 
 See [Roadmap](../roadmap.md) for the full phased delivery plan.

@@ -47,6 +47,7 @@ class SpecmapConfig:
     ignore_patterns: list[str] = field(default_factory=lambda: list(_DEFAULT_IGNORE_PATTERNS))
     base_branch: str | None = None
     repo_root: str | None = None
+    batch_token_budget: int = 8000
 
     @classmethod
     def load(cls, repo_root: str | None = None) -> SpecmapConfig:
@@ -78,6 +79,11 @@ class SpecmapConfig:
             config.ignore_patterns = [p.strip() for p in env_ignore.split(",") if p.strip()]
         if env_base_branch := os.environ.get("SPECMAP_BASE_BRANCH"):
             config.base_branch = env_base_branch
+        if env_batch := os.environ.get("SPECMAP_BATCH_TOKEN_BUDGET"):
+            try:
+                config.batch_token_budget = int(env_batch)
+            except ValueError:
+                pass
 
         return config
 
@@ -115,6 +121,9 @@ def _load_config_file(config: SpecmapConfig, config_path: Path) -> None:
             config.ignore_patterns = ignore_patterns
     if base_branch := data.get("base_branch"):
         config.base_branch = base_branch
+    if batch_token_budget := data.get("batch_token_budget"):
+        if isinstance(batch_token_budget, int):
+            config.batch_token_budget = batch_token_budget
 
 
 def _warn_if_tracked(config_path: Path, repo_root: str) -> None:

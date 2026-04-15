@@ -18,7 +18,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   });
 
   if (resp.status === 401) {
-    window.location.href = '/api/v1/auth/login';
+    // Redirect to app root — the app router shows login/setup based on auth status
+    window.location.href = '/';
     throw new ApiError(401, 'Unauthorized');
   }
 

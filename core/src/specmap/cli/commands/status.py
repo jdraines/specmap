@@ -6,6 +6,7 @@ import typer
 
 from specmap.cli import app
 from specmap.cli.output import get_console
+from specmap.indexer.hasher import hash_code_lines
 from specmap.state.specmap_file import SpecmapFileManager
 
 
@@ -43,6 +44,21 @@ def status(ctx: typer.Context):
         console.print(f"  With spec refs: {with_refs}")
         console.print(f"  Without spec refs: {without_refs}")
 
+    # Compute staleness on-the-fly
+    if total_annotations > 0:
+        staleness = _compute_staleness(repo_root, sf.annotations)
+        parts = []
+        if staleness["fresh"]:
+            parts.append(f"Fresh: {staleness['fresh']}")
+        if staleness["stale"]:
+            parts.append(f"Stale: {staleness['stale']}")
+        if staleness["unknown"]:
+            parts.append(f"Unknown: {staleness['unknown']}")
+        if staleness["missing"]:
+            parts.append(f"Missing: {staleness['missing']}")
+        if parts:
+            console.print(f"  {' | '.join(parts)}")
+
     # Group by file
     by_file: dict[str, list] = {}
     for ann in sf.annotations:
@@ -61,3 +77,40 @@ def status(ctx: typer.Context):
                 console.print(f"    L{ann.start_line}-{ann.end_line}: {desc}")
 
     console.print("\nRun 'specmap validate' to verify annotation line ranges.")
+
+
+def _compute_staleness(repo_root: str, annotations: list) -> dict[str, int]:
+    """Compute staleness breakdown for annotations on-the-fly."""
+    from pathlib import Path
+
+    counts = {"fresh": 0, "stale": 0, "unknown": 0, "missing": 0}
+    file_cache: dict[str, str | None] = {}
+
+    for ann in annotations:
+        if ann.file not in file_cache:
+            try:
+                file_cache[ann.file] = (
+                    (Path(repo_root) / ann.file).read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError):
+                file_cache[ann.file] = None
+
+        content = file_cache[ann.file]
+        if content is None:
+            counts["missing"] += 1
+            continue
+
+        if not ann.code_hash:
+            counts["unknown"] += 1
+            continue
+
+        try:
+            current_hash = hash_code_lines(content, ann.start_line, ann.end_line)
+            if current_hash == ann.code_hash:
+                counts["fresh"] += 1
+            else:
+                counts["stale"] += 1
+        except (IndexError, ValueError):
+            counts["stale"] += 1
+
+    return counts

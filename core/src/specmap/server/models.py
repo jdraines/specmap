@@ -7,7 +7,8 @@ from pydantic import BaseModel
 
 class UserResponse(BaseModel):
     id: int
-    github_id: int
+    provider: str
+    provider_id: int
     login: str
     name: str
     avatar_url: str
@@ -17,7 +18,8 @@ class UserResponse(BaseModel):
 
 class RepositoryResponse(BaseModel):
     id: int
-    github_id: int
+    provider: str
+    provider_id: int
     owner: str
     name: str
     full_name: str
@@ -81,3 +83,30 @@ class SpecmapFileResponse(BaseModel):
 class SpecContentResponse(BaseModel):
     path: str
     content: str
+
+
+class AuthStatusResponse(BaseModel):
+    authenticated: bool
+    auth_mode: str  # "pat" or "oauth"
+    provider: str  # "github" or "gitlab"
+    user: UserResponse | None = None
+    setup_hint: str = ""
+
+
+class WalkthroughStepResponse(BaseModel):
+    step_number: int
+    title: str
+    narrative: str
+    file: str
+    start_line: int | None = None
+    end_line: int | None = None
+    refs: list[SpecRefResponse] = []
+
+
+class WalkthroughData(BaseModel):
+    summary: str
+    steps: list[WalkthroughStepResponse]
+    familiarity: int  # 1-3, echoed back
+    depth: str  # "quick" | "thorough"
+    head_sha: str
+    generated_at: str

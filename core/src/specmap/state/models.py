@@ -36,6 +36,8 @@ class Annotation(BaseModel):
     description: str  # "Implements session store... [1][2]"
     refs: list[SpecRef] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    code_hash: str = ""  # sha256: hash of code at [start_line:end_line], "" = legacy/unknown
+    staleness: str = ""  # "fresh", "shifted", "stale", "", populated by check_sync/status
 
 
 class SpecmapFile(BaseModel):

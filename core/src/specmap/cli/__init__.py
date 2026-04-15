@@ -67,4 +67,4 @@ def main(
 
 
 # Register subcommands by importing the command modules.
-from specmap.cli.commands import validate, status, serve  # noqa: E402, F401
+from specmap.cli.commands import validate, status, serve, annotate, hook  # noqa: E402, F401

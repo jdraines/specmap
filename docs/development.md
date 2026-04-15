@@ -23,43 +23,66 @@ just web-install     # Node deps (React frontend)
 
 ## Running the Web UI
 
-The web UI requires a GitHub OAuth App so the server can fetch repo data on your behalf.
+The web UI needs a forge token to fetch repo data on your behalf. Specmap auto-detects the forge provider (GitHub or GitLab) from your `git remote origin`.
 
-### 1. Create a GitHub OAuth App
+### 1. Set a personal access token
 
-Go to [github.com/settings/developers](https://github.com/settings/developers) > **OAuth Apps** > **New OAuth App**:
+**GitHub** — use any of these methods (checked in order):
 
-| Field | Value |
-|-------|-------|
-| Application name | Specmap (dev) |
-| Homepage URL | `http://localhost:8080` |
-| Authorization callback URL | `http://localhost:8080/api/v1/auth/callback` |
+1. Set `GITHUB_TOKEN` (or `GH_TOKEN`) environment variable
+2. Have `gh` CLI authenticated (`gh auth login`) — specmap falls back to `gh auth token`
 
-Save the **Client ID** and generate a **Client Secret**.
+The token needs `repo` scope for private repositories, or no scope for public-only.
 
-No installation step is needed -- OAuth Apps use the `repo` scope to access repositories the authenticated user has access to.
+**GitLab** — use any of these methods (checked in order):
 
-### 2. Configure environment
+1. Set `GITLAB_TOKEN` environment variable
+2. Have `glab` CLI authenticated — specmap falls back to `glab config get token`
+
+The token needs `read_api` and `read_repository` scopes.
+
+### 2. Configure environment (optional)
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+For PAT mode (the default), the only thing you might need to set is `CORS_ORIGIN`:
 
 ```bash
-PORT=8080
-BASE_URL=http://localhost:8080
-
-DATABASE_PATH=./specmap.db
-
-GITHUB_CLIENT_ID=<from step 1>
-GITHUB_CLIENT_SECRET=<from step 1>
-
-SESSION_SECRET=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-
 CORS_ORIGIN=http://localhost:5173
+```
+
+Session secrets are auto-generated if not provided.
+
+#### OAuth mode (enterprise)
+
+If your organization restricts PATs, you can configure OAuth instead:
+
+**GitHub** — Go to [github.com/settings/developers](https://github.com/settings/developers) > **OAuth Apps** > **New OAuth App**:
+
+| Field | Value |
+|-------|-------|
+| Application name | Specmap (dev) |
+| Homepage URL | `http://localhost:8080` |
+| Authorization callback URL | `http://localhost:8080/api/v1/auth/callback/github` |
+
+**GitLab** — Go to your GitLab instance > **Preferences** > **Applications** > **New Application**:
+
+| Field | Value |
+|-------|-------|
+| Name | Specmap (dev) |
+| Redirect URI | `http://localhost:8080/api/v1/auth/callback/gitlab` |
+| Scopes | `read_api`, `read_repository` |
+
+Then set the client credentials in `.env`:
+
+```bash
+GITHUB_CLIENT_ID=<from step above>
+GITHUB_CLIENT_SECRET=<from step above>
+# or for GitLab:
+GITLAB_CLIENT_ID=<from step above>
+GITLAB_CLIENT_SECRET=<from step above>
 ```
 
 ### 3. Start services
@@ -74,7 +97,7 @@ just serve         # or: just serve-dev (auto-reload)
 just web-dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) and click "Sign in with GitHub".
+Open [http://localhost:5173](http://localhost:5173). In PAT mode with a valid token, the dashboard loads immediately. In OAuth mode, click the sign-in button.
 
 ## Project Structure
 
@@ -88,7 +111,7 @@ specmap/
 │   │   ├── tools/         # MCP tool implementations
 │   │   ├── mcp/           # MCP server entrypoint
 │   │   ├── cli/           # Typer CLI entrypoint + commands
-│   │   └── server/        # FastAPI server (auth, GitHub API, SQLite)
+│   │   └── server/        # FastAPI server (auth, forge API, SQLite)
 │   ├── tests/             # Unit tests (pytest)
 │   └── pyproject.toml
 ├── web/                   # React frontend
@@ -221,6 +244,8 @@ def setup_spec_on_main(repo, spec_path, content):
 
 **"CORS error in browser console"** -- Check that `CORS_ORIGIN` in `.env` matches the Vite dev server URL exactly (`http://localhost:5173`).
 
-**"Empty annotations on PR page"** -- The `.specmap/{branch}.json` file must be committed and pushed to the PR branch. The API fetches it from GitHub at the PR's head SHA.
+**"Empty annotations on PR page"** -- The `.specmap/{branch}.json` file must be committed and pushed to the PR branch. The API fetches it from the forge at the PR's head SHA.
 
-**"OAuth callback error"** -- Verify the callback URL in your GitHub OAuth App settings matches `BASE_URL` + `/api/v1/auth/callback` exactly.
+**"OAuth callback error"** -- Verify the callback URL in your OAuth App settings matches `BASE_URL` + `/api/v1/auth/callback/{provider}` exactly.
+
+**"No token found"** -- In PAT mode, ensure your token is set via env var or CLI tool. You can also enter it manually in the web UI login page.
