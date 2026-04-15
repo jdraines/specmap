@@ -506,17 +506,32 @@ def create_app(config: ServerConfig) -> FastAPI:
         pulls_list = await provider.list_pulls(_http(request), token, owner, repo)
         result = []
         for p in pulls_list:
-            db_pull = _db(request).upsert_pull(
-                repository_id=db_repo["id"],
-                number=p["number"],
-                title=p["title"],
-                state=p["state"],
-                head_branch=p["head_branch"],
-                base_branch=p["base_branch"],
-                head_sha=p["head_sha"],
-                author_login=p["author_login"],
-            )
-            result.append(_pull_response(db_pull))
+            if p["head_sha"]:
+                db_pull = _db(request).upsert_pull(
+                    repository_id=db_repo["id"],
+                    number=p["number"],
+                    title=p["title"],
+                    state=p["state"],
+                    head_branch=p["head_branch"],
+                    base_branch=p["base_branch"],
+                    head_sha=p["head_sha"],
+                    author_login=p["author_login"],
+                )
+                result.append(_pull_response(db_pull))
+            else:
+                result.append({
+                    "id": 0,
+                    "repository_id": db_repo["id"],
+                    "number": p["number"],
+                    "title": p["title"],
+                    "state": p["state"],
+                    "head_branch": p["head_branch"],
+                    "base_branch": p["base_branch"],
+                    "head_sha": "",
+                    "author_login": p.get("author_login", ""),
+                    "created_at": "",
+                    "updated_at": "",
+                })
         return result
 
     async def _handle_get_pull(request: Request, owner: str, repo: str, number: int):
