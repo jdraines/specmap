@@ -69,7 +69,7 @@ def create_app(config: ServerConfig) -> FastAPI:
                 logger.warning(
                     "PAT mode but no token found for %s — set %s or use the web UI to enter one",
                     provider_name,
-                    "GITHUB_TOKEN" if provider_name == "github" else "GITLAB_TOKEN",
+                    "GITHUB_TOKEN/gh auth token" if provider_name == "github" else "GITLAB_TOKEN/glab auth login",
                 )
 
         async with httpx.AsyncClient(timeout=30) as client:
@@ -209,7 +209,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         hint = ""
         if mode == "pat":
             env_var = "GITHUB_TOKEN" if provider.name == "github" else "GITLAB_TOKEN"
-            cli_cmd = "gh auth token" if provider.name == "github" else "glab config get token"
+            cli_cmd = "gh auth token" if provider.name == "github" else "glab auth login"
             hint = f"Set {env_var} or run `{cli_cmd}`, then restart the server. Or enter a token below."
         return {
             "authenticated": False,

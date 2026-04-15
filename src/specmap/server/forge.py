@@ -136,18 +136,46 @@ def resolve_token(provider_name: str) -> str | None:
         token = os.environ.get("GITLAB_TOKEN")
         if token:
             return token
-        # Fallback: glab CLI
-        try:
-            result = subprocess.run(
-                ["glab", "config", "get", "token"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        # Fallback: glab CLI — try multiple methods
+        for cmd in [
+            ["glab", "config", "get", "token"],
+            ["glab", "auth", "status", "-t"],
+        ]:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    tok = _parse_glab_token(result.stdout, result.stderr)
+                    if tok:
+                        return tok
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+    return None
+
+
+def _parse_glab_token(stdout: str, stderr: str) -> str | None:
+    """Extract a token from glab output.
+
+    `glab config get token` prints the raw token on stdout.
+    `glab auth status -t` prints "Token: glpat-..." on stderr (or stdout).
+    """
+    # Direct token output (glab config get token)
+    if stdout.strip() and "\n" not in stdout.strip():
+        candidate = stdout.strip()
+        if candidate.startswith("glpat-") or len(candidate) > 20:
+            return candidate
+
+    # Parse "Token: <value>" from auth status output (may be on stderr)
+    for line in (stderr + "\n" + stdout).splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("token:"):
+            tok = stripped.split(":", 1)[1].strip()
+            if tok:
+                return tok
     return None
 
 
