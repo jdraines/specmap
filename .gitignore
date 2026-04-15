@@ -44,3 +44,4 @@ web/dist/
 
 # Server static files (built frontend)
 core/src/specmap/server/static/
+core/src/specmap/_static/
