@@ -87,7 +87,13 @@ GITLAB_CLIENT_SECRET=<from step above>
 
 ### 3. Start services
 
-Two terminals:
+```bash
+just dev    # Runs API server + Vite dev server in one command
+```
+
+This starts both processes in parallel (API on `:8080` with auto-reload, Vite on `:5173`). Open [http://localhost:5173](http://localhost:5173). In PAT mode with a valid token, the dashboard loads immediately. In OAuth mode, click the sign-in button.
+
+You can also run them in separate terminals if you prefer:
 
 ```bash
 # Terminal 1: Python API server
@@ -96,8 +102,6 @@ just serve         # or: just serve-dev (auto-reload)
 # Terminal 2: React frontend
 just web-dev
 ```
-
-Open [http://localhost:5173](http://localhost:5173). In PAT mode with a valid token, the dashboard loads immediately. In OAuth mode, click the sign-in button.
 
 ## Project Structure
 

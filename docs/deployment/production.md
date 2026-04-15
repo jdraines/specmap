@@ -25,7 +25,7 @@ Browser ──────────► │  Reverse Proxy           │
                     └──────────────────────────┘
 ```
 
-- **Single process**: `specmap serve` runs the API server with the React frontend embedded (when built with `--static-dir`)
+- **Single process**: `specmap serve` runs the API server with the React frontend embedded (bundled in the wheel, or via `--static-dir`)
 - **SQLite**: all state (users, tokens, cached PR data) stored in a single file
 - **No webhooks**: the server fetches data from the forge on demand via the API
 - **Auto-detection**: forge provider (GitHub or GitLab) is detected from `git remote origin`
@@ -90,7 +90,7 @@ GITLAB_CLIENT_SECRET=secret123
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `PORT` | No | Port to listen on (default: `8080`) |
-| `HOST` | No | Host to bind to (default: `0.0.0.0`) |
+| `HOST` | No | Host to bind to (default: `127.0.0.1`) |
 | `BASE_URL` | Yes | Public URL of the server (e.g., `https://specmap.example.com`) |
 | `DATABASE_PATH` | No | Path to SQLite database file (default: `./specmap.db`) |
 | `GITHUB_TOKEN` | * | GitHub PAT (PAT mode) |
@@ -105,7 +105,7 @@ GITLAB_CLIENT_SECRET=secret123
 | `SPECMAP_FORGE_URL` | No | Base URL for self-hosted GitLab (e.g., `https://gitlab.example.com`) |
 | `CORS_ORIGIN` | No | Set only if frontend is served from a different origin |
 | `FRONTEND_URL` | No | Where to redirect after OAuth login (defaults to `CORS_ORIGIN` or `BASE_URL`) |
-| `STATIC_DIR` | No | Directory with built frontend files (for embedded SPA mode) |
+| `STATIC_DIR` | No | Directory with built frontend files (overrides bundled frontend) |
 
 \* At least one auth method must be configured for the detected provider.
 
@@ -147,7 +147,7 @@ docker run -d \
   specmap:latest
 ```
 
-The Docker image bundles the Python API server with the built React frontend. It runs `specmap serve --static-dir /app/static` to serve both from a single process.
+The Docker image bundles the Python API server with the built React frontend. It runs `specmap serve --host 0.0.0.0 --static-dir /app/static` to serve both from a single process (the explicit `--host 0.0.0.0` is needed because the default is `127.0.0.1`).
 
 ### Self-hosted GitLab
 
@@ -205,15 +205,19 @@ When `BASE_URL` starts with `https://`, the server sets `Secure` on session cook
 
 ## Without Docker
 
-You can also run specmap directly:
+You can also run specmap directly. The pip/uv install bundles the frontend — no separate build step needed:
 
 ```bash
 # Install
 uv tool install git+https://github.com/jdraines/specmap.git#subdirectory=core
 
-# Build frontend
-cd web && npm ci && npm run build && cd ..
+# Run (frontend is bundled in the package)
+cd /path/to/your-repo
+specmap serve --host 0.0.0.0
+```
 
-# Run with embedded frontend
-specmap serve --static-dir web/dist
+To use a custom frontend build instead of the bundled one, pass `--static-dir`:
+
+```bash
+specmap serve --host 0.0.0.0 --static-dir /path/to/web/dist
 ```

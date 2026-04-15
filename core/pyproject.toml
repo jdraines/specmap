@@ -1,6 +1,6 @@
 [project]
 name = "specmap"
-version = "0.1.0"
+version = "0.2.0"
 description = "Spec-to-code mapping: core library, MCP server, and CLI"
 requires-python = ">=3.11"
 dependencies = [
@@ -35,6 +35,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/specmap"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../web/dist" = "specmap/_static"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -30,7 +30,7 @@ class ServerConfig:
     frontend_url: str = ""
     database_path: str = "./specmap.db"
     port: int = 8080
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     static_dir: str = ""
     # Derived
     secure: bool = field(init=False)
@@ -79,6 +79,6 @@ class ServerConfig:
             frontend_url=opt("FRONTEND_URL"),
             database_path=opt("DATABASE_PATH", "./specmap.db"),
             port=port,
-            host=opt("HOST", "0.0.0.0"),
+            host=opt("HOST", "127.0.0.1"),
             static_dir=opt("STATIC_DIR"),
         )

@@ -61,12 +61,18 @@ cd specmap
 just mcp-install     # Python (core library, MCP server, CLI, API server)
 just web-install     # Node (React frontend)
 
+# Run full dev stack (API + Vite dev server)
+just dev
+
 # Run tests
 just test-all        # Unit + functional tests
 just lint            # ruff + tsc
+
+# Build wheel with bundled frontend
+just build
 ```
 
-To run the web UI locally, you'll also need a GitHub OAuth App and `.env` file. See [Development](docs/development.md) for the complete setup.
+To run the web UI locally, you'll need a forge token (PAT or OAuth). See [Development](docs/development.md) for the complete setup.
 
 ### Prerequisites
 

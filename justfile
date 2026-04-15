@@ -114,6 +114,20 @@ core-version VERSION:
 image-build:
     docker build -t specmap:latest .
 
+# --- Build ---
+
+# Build Python wheel with bundled frontend
+build: web-build
+    cd core && uv build
+
+# Run full dev stack (API + Vite dev server)
+dev:
+    #!/usr/bin/env bash
+    trap 'kill 0' EXIT
+    cd core && CORS_ORIGIN=http://localhost:5173 uv run specmap serve --reload --no-open &
+    cd web && npm run dev &
+    wait
+
 # --- Combined ---
 
 # Run all unit tests
