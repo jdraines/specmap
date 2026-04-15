@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import subprocess
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from specmap.config import SPEC_EXCLUDE_DIRS, SPEC_EXCLUDE_FILENAMES, SpecmapConfig
@@ -28,6 +29,7 @@ async def annotate(
     branch: str | None = None,
     context: str | None = None,
     dry_run: bool = False,
+    on_progress: Callable[[int, int], Awaitable[None] | None] | None = None,
 ) -> dict:
     """Generate annotations for code changes with spec references.
 
@@ -77,7 +79,7 @@ async def annotate(
         result = await _incremental_annotate(
             repo_root, config, specmap, analyzer, spec_contents,
             previous_head, current_head, file_mgr, context=context,
-            dry_run=dry_run,
+            dry_run=dry_run, on_progress=on_progress,
         )
         if result is not None:
             return result
@@ -133,6 +135,7 @@ async def annotate(
     new_annotations = await mapper.annotate_changes(
         changes, spec_contents, context=context,
         batch_token_budget=config.batch_token_budget,
+        on_progress=on_progress,
     )
 
     # Set staleness on newly generated annotations
@@ -182,6 +185,7 @@ async def _incremental_annotate(
     file_mgr: SpecmapFileManager,
     context: str | None = None,
     dry_run: bool = False,
+    on_progress: Callable[[int, int], Awaitable[None] | None] | None = None,
 ) -> dict | None:
     """Try incremental annotation using diff from previous head.
 
@@ -198,6 +202,7 @@ async def _incremental_annotate(
         return await _working_tree_annotate(
             repo_root, config, specmap, analyzer, spec_contents,
             current_head, file_mgr, context=context, dry_run=dry_run,
+            on_progress=on_progress,
         )
 
     # Classify existing annotations
@@ -270,6 +275,7 @@ async def _incremental_annotate(
         new_annotations = await mapper.annotate_changes(
             changes, spec_contents, context=context,
             batch_token_budget=config.batch_token_budget,
+            on_progress=on_progress,
         )
         llm_usage = llm_client.get_usage()
 
@@ -322,6 +328,7 @@ async def _working_tree_annotate(
     file_mgr: SpecmapFileManager,
     context: str | None = None,
     dry_run: bool = False,
+    on_progress: Callable[[int, int], Awaitable[None] | None] | None = None,
 ) -> dict:
     """Handle working-tree changes using hunk-level optimization.
 
@@ -387,6 +394,7 @@ async def _working_tree_annotate(
                 new_annotations = await mapper.annotate_changes(
                     changes, spec_contents, context=context,
                     batch_token_budget=config.batch_token_budget,
+                    on_progress=on_progress,
                 )
                 llm_usage = llm_client.get_usage()
 
@@ -492,6 +500,7 @@ async def _working_tree_annotate(
     new_annotations = await mapper.annotate_changes(
         dirty_changes, spec_contents, context=context,
         batch_token_budget=config.batch_token_budget,
+        on_progress=on_progress,
     )
 
     for ann in new_annotations:

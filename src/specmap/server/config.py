@@ -32,6 +32,7 @@ class ServerConfig:
     port: int = 8080
     host: str = "127.0.0.1"
     static_dir: str = ""
+    annotate_timeout: int = 120
     # Derived
     secure: bool = field(init=False)
 
@@ -81,4 +82,5 @@ class ServerConfig:
             port=port,
             host=opt("HOST", "127.0.0.1"),
             static_dir=opt("STATIC_DIR"),
+            annotate_timeout=int(opt("SPECMAP_ANNOTATE_TIMEOUT", "120")),
         )

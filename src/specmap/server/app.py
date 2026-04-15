@@ -13,6 +13,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.responses import StreamingResponse
 
 from specmap import __version__
 from specmap.server import auth
@@ -600,6 +601,9 @@ def create_app(config: ServerConfig) -> FastAPI:
 
     # --- Generate Annotations ---
 
+    def _sse(event: str, data: dict) -> str:
+        return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
     @app.post("/api/v1/repos/{owner}/{repo}/pulls/{number}/generate-annotations")
     async def generate_annotations(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)
@@ -614,9 +618,16 @@ def create_app(config: ServerConfig) -> FastAPI:
         body = await request.json()
         mode = body.get("mode", "full")
         force = body.get("force", False)
+        req_timeout = body.get("timeout")
 
         if mode not in ("lite", "full"):
             raise HTTPError(400, 'mode must be "lite" or "full"')
+
+        # Resolve timeout: request body → config → default
+        if req_timeout is not None:
+            annotate_timeout = max(30, min(600, int(req_timeout)))
+        else:
+            annotate_timeout = cfg.annotate_timeout
 
         # Fetch repo + PR
         r = await provider.get_repo(_http(request), token, owner, repo)
@@ -641,7 +652,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         )
         head_sha = db_pull["head_sha"]
 
-        # Check cache
+        # Check cache — return plain JSON (not SSE)
         if not force:
             cached = db.get_mapping_cache(db_pull["id"], head_sha)
             if cached:
@@ -654,28 +665,64 @@ def create_app(config: ServerConfig) -> FastAPI:
             _http(request), token, owner, repo, number
         )
 
-        # Generate
-        from specmap.server.generate import generate_full, generate_lite
+        # Stream SSE with progress
+        async def event_stream():
+            progress_queue: asyncio.Queue = asyncio.Queue()
 
-        if mode == "lite":
-            specmap_data = await generate_lite(
-                provider, _http(request), token,
-                owner, repo, pr_files,
-                head_sha, db_pull["head_branch"], db_pull["base_branch"],
-                cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
-            )
-        else:
-            specmap_data = await generate_full(
-                provider, _http(request), token,
-                owner, repo, pr_files,
-                head_sha, db_pull["head_branch"], db_pull["base_branch"],
-                cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
-                pr_title=db_pull["title"],
-            )
+            async def on_progress(data: dict):
+                await progress_queue.put(("progress", data))
 
-        # Cache and return
-        db.upsert_mapping_cache(db_pull["id"], head_sha, json.dumps(specmap_data))
-        return specmap_data
+            yield _sse("progress", {"phase": "starting", "detail": "Starting annotation generation..."})
+
+            from specmap.server.generate import generate_full, generate_lite
+
+            async def run_generate():
+                try:
+                    if mode == "lite":
+                        result = await generate_lite(
+                            provider, _http(request), token,
+                            owner, repo, pr_files,
+                            head_sha, db_pull["head_branch"], db_pull["base_branch"],
+                            cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
+                            annotate_timeout=annotate_timeout,
+                            on_progress=on_progress,
+                        )
+                    else:
+                        result = await generate_full(
+                            provider, _http(request), token,
+                            owner, repo, pr_files,
+                            head_sha, db_pull["head_branch"], db_pull["base_branch"],
+                            cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
+                            pr_title=db_pull["title"],
+                            annotate_timeout=annotate_timeout,
+                            on_progress=on_progress,
+                        )
+                    await progress_queue.put(("complete", result))
+                except (TimeoutError, asyncio.CancelledError):
+                    await progress_queue.put(("error", {"message": "Annotation generation timed out — the PR may be too large. Try 'lite' mode."}))
+                except Exception as e:
+                    await progress_queue.put(("error", {"message": str(e)}))
+
+            task = asyncio.create_task(run_generate())
+
+            while True:
+                event_type, data = await progress_queue.get()
+                if event_type == "complete":
+                    # Cache and yield final result
+                    db.upsert_mapping_cache(db_pull["id"], head_sha, json.dumps(data))
+                    yield _sse("complete", data)
+                    break
+                elif event_type == "error":
+                    yield _sse("error", data)
+                    break
+                else:
+                    yield _sse("progress", data)
+
+            # Ensure task is done
+            if not task.done():
+                task.cancel()
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     # --- Clear Cache ---
 
