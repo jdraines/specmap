@@ -418,6 +418,15 @@ def create_app(config: ServerConfig) -> FastAPI:
                 )
             ) for p in pulls]
             result.append(_repo_response(db_repo, recent_pulls=recent))
+
+        # Sort repos by most recent PR updated_at (descending)
+        def _latest_pull_ts(repo: dict) -> str:
+            pulls = repo.get("recent_pulls") or []
+            if not pulls:
+                return ""
+            return max(p["updated_at"] for p in pulls)
+
+        result.sort(key=_latest_pull_ts, reverse=True)
         return result
 
     @app.get("/api/v1/repos/{owner}/{repo}")
