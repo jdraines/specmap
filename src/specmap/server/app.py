@@ -1002,7 +1002,7 @@ def create_app(config: ServerConfig) -> FastAPI:
             owner, name = full_name.rsplit("/", 1)
             number_str = m.group("number")
             number = int(number_str) if number_str else None
-            action = m.group("action") or ("" if number_str else "pulls")
+            action = m.group("action") or ("get" if number_str else "pulls")
             return owner, name, number, action
 
         # No /pulls — this is a plain repo lookup
@@ -1024,8 +1024,8 @@ def create_app(config: ServerConfig) -> FastAPI:
         if action == "pulls" and number is None:
             return await _handle_list_pulls(request, owner, name)
 
-        # /pulls/{number}/...
-        if action == "":
+        # /pulls/{number} — get single pull
+        if action == "get":
             return await _handle_get_pull(request, owner, name, number)
         if action == "files":
             return await _handle_list_pull_files(request, owner, name, number)
