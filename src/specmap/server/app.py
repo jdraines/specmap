@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -43,6 +44,9 @@ def _build_provider(provider_name: str, base_url: str, config: ServerConfig) -> 
 def create_app(config: ServerConfig) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        db_dir = os.path.dirname(config.database_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         db = Database(config.database_path)
         db.initialize()
         app.state.db = db
@@ -672,6 +676,23 @@ def create_app(config: ServerConfig) -> FastAPI:
         # Cache and return
         db.upsert_mapping_cache(db_pull["id"], head_sha, json.dumps(specmap_data))
         return specmap_data
+
+    # --- Clear Cache ---
+
+    @app.delete("/api/v1/repos/{owner}/{repo}/pulls/{number}/cache")
+    async def clear_cache(request: Request, owner: str, repo: str, number: int):
+        claims = _get_current_user(request)
+        _get_forge_token(request, claims)
+        db = _db(request)
+
+        db_repo = db.get_repo_by_full_name(owner, repo)
+        if db_repo:
+            db_pull = db.get_pull(db_repo["id"], number)
+            if db_pull:
+                db.delete_mapping_cache(db_pull["id"])
+                db.delete_walkthrough_cache(db_pull["id"])
+
+        return {"status": "cleared"}
 
     # --- Walkthrough ---
 

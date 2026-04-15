@@ -1,6 +1,6 @@
 [project]
 name = "specmap"
-version = "0.2.11"
+version = "0.2.12"
 description = "Spec-to-code mapping: core library, MCP server, and CLI"
 requires-python = ">=3.11"
 dependencies = [

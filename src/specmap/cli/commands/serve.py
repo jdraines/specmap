@@ -115,7 +115,7 @@ def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
 def serve(
     port: int = typer.Option(8080, help="Port to listen on"),
     host: str = typer.Option("127.0.0.1", help="Host to bind to"),
-    db: str = typer.Option("./specmap.db", help="SQLite database path"),
+    db: str = typer.Option(".specmap/specmap.db", help="SQLite database path"),
     static_dir: str = typer.Option("", help="Directory with built frontend files"),
     reload: bool = typer.Option(False, help="Enable auto-reload for development"),
     no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open browser"),
