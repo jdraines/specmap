@@ -14,16 +14,15 @@ interface ReviewState {
   generateProgress: GenerateProgress | null;
   canGenerate: boolean;
   clearingCache: boolean;
-  fetchReview: (owner: string, repo: string, number: number) => Promise<void>;
+  fetchReview: (fullName: string, number: number) => Promise<void>;
   generateAnnotations: (
-    owner: string,
-    repo: string,
+    fullName: string,
     number: number,
     mode?: 'lite' | 'full',
     force?: boolean,
     timeout?: number,
   ) => Promise<void>;
-  clearCache: (owner: string, repo: string, number: number) => Promise<void>;
+  clearCache: (fullName: string, number: number) => Promise<void>;
   checkCanGenerate: () => Promise<void>;
 }
 
@@ -49,13 +48,13 @@ export const useReviewStore = create<ReviewState>((set) => ({
   generateProgress: null,
   canGenerate: false,
   clearingCache: false,
-  fetchReview: async (owner, repo, number) => {
+  fetchReview: async (fullName, number) => {
     set({ loading: true, error: null });
     try {
       const [pr, files, specmap] = await Promise.all([
-        pulls.get(owner, repo, number),
-        pulls.files(owner, repo, number),
-        pulls.annotations(owner, repo, number),
+        pulls.get(fullName, number),
+        pulls.files(fullName, number),
+        pulls.annotations(fullName, number),
       ]);
 
       set({
@@ -69,11 +68,11 @@ export const useReviewStore = create<ReviewState>((set) => ({
       set({ error: String(err), loading: false });
     }
   },
-  generateAnnotations: async (owner, repo, number, mode = 'full', force = false, timeout?: number) => {
+  generateAnnotations: async (fullName, number, mode = 'full', force = false, timeout?: number) => {
     set({ generating: true, generateError: null, generateProgress: null });
     try {
       const specmap = await pulls.generateAnnotations(
-        owner, repo, number, mode, force, timeout,
+        fullName, number, mode, force, timeout,
         (progress) => set({ generateProgress: progress }),
       );
       set({
@@ -92,10 +91,10 @@ export const useReviewStore = create<ReviewState>((set) => ({
       set({ generateError: msg, generating: false, generateProgress: null });
     }
   },
-  clearCache: async (owner, repo, number) => {
+  clearCache: async (fullName, number) => {
     set({ clearingCache: true });
     try {
-      await pulls.clearCache(owner, repo, number);
+      await pulls.clearCache(fullName, number);
       set({
         specmapFile: null,
         annotationsByFile: new Map(),

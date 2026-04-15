@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from 'react';
-import { useParams } from 'react-router';
 import type { Annotation } from '../api/types';
 import { useReviewStore } from '../stores/reviewStore';
 import { useSpecPanelStore } from '../stores/specPanelStore';
@@ -59,12 +58,12 @@ function KeyboardHelpOverlay({ onClose, walkthroughActive }: { onClose: () => vo
   );
 }
 
-export function PRReviewPage() {
-  const { owner, repo, number } = useParams<{
-    owner: string;
-    repo: string;
-    number: string;
-  }>();
+interface PRReviewPageProps {
+  fullName: string;
+  prNumber: number;
+}
+
+export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
   const { pr, files, annotationsByFile, loading, error, fetchReview, checkCanGenerate } = useReviewStore();
   const setContext = useSpecPanelStore((s) => s.setContext);
   const closeModal = useSpecPanelStore((s) => s.closeModal);
@@ -78,8 +77,6 @@ export function PRReviewPage() {
   const walkthroughNextStep = useWalkthroughStore((s) => s.nextStep);
   const walkthroughPrevStep = useWalkthroughStore((s) => s.prevStep);
 
-  const prNumber = Number(number);
-
   const allAnnotations = useMemo(() => {
     const result: Annotation[] = [];
     annotationsByFile.forEach((anns) => result.push(...anns));
@@ -87,12 +84,12 @@ export function PRReviewPage() {
   }, [annotationsByFile]);
 
   useEffect(() => {
-    if (!owner || !repo || !number) return;
-    fetchReview(owner, repo, prNumber);
-    setContext(owner, repo, prNumber);
+    if (!fullName) return;
+    fetchReview(fullName, prNumber);
+    setContext(fullName, prNumber);
     checkAvailable();
     checkCanGenerate();
-  }, [owner, repo, number, prNumber, fetchReview, setContext, checkAvailable, checkCanGenerate]);
+  }, [fullName, prNumber, fetchReview, setContext, checkAvailable, checkCanGenerate]);
 
   const currentWalkthroughStep = walkthroughActive && walkthroughData
     ? walkthroughData.steps[walkthroughStep] ?? null
@@ -128,7 +125,7 @@ export function PRReviewPage() {
       <Breadcrumb
         items={[
           { label: 'repos', to: '/' },
-          { label: `${owner}/${repo}`, to: `/${owner}/${repo}` },
+          { label: fullName, to: `/r/${fullName}` },
           { label: `#${pr.number}` },
         ]}
       />
@@ -138,22 +135,16 @@ export function PRReviewPage() {
         <span className="text-[var(--text-muted)]">{pr.head_sha.slice(0, 7)}</span>
       </p>
       <ReviewToolbar annotations={allAnnotations} files={files} annotationsByFile={annotationsByFile} />
-      {owner && repo && (
-        <GenerateAnnotationsBanner
-          owner={owner}
-          repo={repo}
-          prNumber={prNumber}
-          hasAnnotations={allAnnotations.length > 0}
-        />
-      )}
-      {owner && repo && (
-        <WalkthroughBanner
-          owner={owner}
-          repo={repo}
-          prNumber={prNumber}
-          hasAnnotations={allAnnotations.length > 0}
-        />
-      )}
+      <GenerateAnnotationsBanner
+        fullName={fullName}
+        prNumber={prNumber}
+        hasAnnotations={allAnnotations.length > 0}
+      />
+      <WalkthroughBanner
+        fullName={fullName}
+        prNumber={prNumber}
+        hasAnnotations={allAnnotations.length > 0}
+      />
       <DiffViewer
         files={files}
         annotationsByFile={annotationsByFile}

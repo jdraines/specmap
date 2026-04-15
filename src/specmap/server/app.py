@@ -453,8 +453,10 @@ def create_app(config: ServerConfig) -> FastAPI:
             "total_pages": page_data["total_pages"],
         }
 
-    @app.get("/api/v1/repos/{owner}/{repo}")
-    async def get_repo(request: Request, owner: str, repo: str):
+    # --- Repo route helpers ---
+    # These are called by the catch-all dispatcher below.
+
+    async def _handle_get_repo(request: Request, owner: str, repo: str):
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
@@ -469,8 +471,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         )
         return _repo_response(db_repo)
 
-    @app.get("/api/v1/repos/{owner}/{repo}/pulls")
-    async def list_pulls(request: Request, owner: str, repo: str):
+    async def _handle_list_pulls(request: Request, owner: str, repo: str):
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
@@ -483,9 +484,9 @@ def create_app(config: ServerConfig) -> FastAPI:
             full_name=r["full_name"],
             private=r["private"],
         )
-        pulls = await provider.list_pulls(_http(request), token, owner, repo)
+        pulls_list = await provider.list_pulls(_http(request), token, owner, repo)
         result = []
-        for p in pulls:
+        for p in pulls_list:
             db_pull = _db(request).upsert_pull(
                 repository_id=db_repo["id"],
                 number=p["number"],
@@ -499,8 +500,7 @@ def create_app(config: ServerConfig) -> FastAPI:
             result.append(_pull_response(db_pull))
         return result
 
-    @app.get("/api/v1/repos/{owner}/{repo}/pulls/{number}")
-    async def get_pull(request: Request, owner: str, repo: str, number: int):
+    async def _handle_get_pull(request: Request, owner: str, repo: str, number: int):
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
@@ -526,15 +526,13 @@ def create_app(config: ServerConfig) -> FastAPI:
         )
         return _pull_response(db_pull)
 
-    @app.get("/api/v1/repos/{owner}/{repo}/pulls/{number}/files")
-    async def list_pull_files(request: Request, owner: str, repo: str, number: int):
+    async def _handle_list_pull_files(request: Request, owner: str, repo: str, number: int):
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
         return await provider.list_pull_files(_http(request), token, owner, repo, number)
 
-    @app.get("/api/v1/repos/{owner}/{repo}/pulls/{number}/file-source")
-    async def get_file_source(request: Request, owner: str, repo: str, number: int):
+    async def _handle_get_file_source(request: Request, owner: str, repo: str, number: int):
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
@@ -551,8 +549,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         except ForgeNotFound:
             raise HTTPError(404, "File not found")
 
-    @app.get("/api/v1/repos/{owner}/{repo}/pulls/{number}/annotations")
-    async def get_annotations(request: Request, owner: str, repo: str, number: int):
+    async def _handle_get_annotations(request: Request, owner: str, repo: str, number: int):
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
@@ -603,8 +600,7 @@ def create_app(config: ServerConfig) -> FastAPI:
 
         return specmap_data
 
-    @app.get("/api/v1/repos/{owner}/{repo}/pulls/{number}/specs/{path:path}")
-    async def get_spec_content(request: Request, owner: str, repo: str, number: int, path: str):
+    async def _handle_get_spec_content(request: Request, owner: str, repo: str, number: int, spec_path: str):
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
@@ -612,9 +608,9 @@ def create_app(config: ServerConfig) -> FastAPI:
         head_sha = p["head_sha"]
         try:
             content = await provider.get_file_content(
-                _http(request), token, owner, repo, path, head_sha
+                _http(request), token, owner, repo, spec_path, head_sha
             )
-            return {"path": path, "content": content.decode("utf-8", errors="replace")}
+            return {"path": spec_path, "content": content.decode("utf-8", errors="replace")}
         except ForgeNotFound:
             raise HTTPError(404, "Spec file not found")
 
@@ -623,8 +619,7 @@ def create_app(config: ServerConfig) -> FastAPI:
     def _sse(event: str, data: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
-    @app.post("/api/v1/repos/{owner}/{repo}/pulls/{number}/generate-annotations")
-    async def generate_annotations(request: Request, owner: str, repo: str, number: int):
+    async def _handle_generate_annotations(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)
         if not cfg.llm_api_key:
             raise HTTPError(503, "LLM not configured. Set SPECMAP_API_KEY.")
@@ -745,8 +740,7 @@ def create_app(config: ServerConfig) -> FastAPI:
 
     # --- Clear Cache ---
 
-    @app.delete("/api/v1/repos/{owner}/{repo}/pulls/{number}/cache")
-    async def clear_cache(request: Request, owner: str, repo: str, number: int):
+    async def _handle_clear_cache(request: Request, owner: str, repo: str, number: int):
         claims = _get_current_user(request)
         _get_forge_token(request, claims)
         db = _db(request)
@@ -762,8 +756,7 @@ def create_app(config: ServerConfig) -> FastAPI:
 
     # --- Walkthrough ---
 
-    @app.post("/api/v1/repos/{owner}/{repo}/pulls/{number}/walkthrough")
-    async def generate_walkthrough(request: Request, owner: str, repo: str, number: int):
+    async def _handle_generate_walkthrough(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)
         if not cfg.llm_api_key:
             raise HTTPError(503, "LLM not configured. Set SPECMAP_API_KEY.")
@@ -948,6 +941,75 @@ def create_app(config: ServerConfig) -> FastAPI:
             db_pull["id"], head_sha, familiarity, depth, json.dumps(walkthrough_data)
         )
         return walkthrough_data
+
+    # --- Catch-all repo route dispatcher ---
+    # Supports nested namespaces (e.g. group/subgroup/project/pulls/42)
+
+    import re as _re
+
+    _PULLS_RE = _re.compile(
+        r"^(?P<full_name>.+)/pulls"
+        r"(?:/(?P<number>\d+)(?:/(?P<action>.+))?)?$"
+    )
+
+    def _parse_repo_path(repo_path: str) -> tuple[str, str, int | None, str]:
+        """Parse repo_path into (owner, name, pr_number|None, sub_action).
+
+        Returns (owner, name, number, action) where action is one of:
+        '' (plain repo lookup), 'pulls' (list), 'files', 'file-source',
+        'annotations', 'specs/...', 'generate-annotations', 'cache',
+        'walkthrough'.
+        """
+        m = _PULLS_RE.match(repo_path)
+        if m:
+            full_name = m.group("full_name")
+            if "/" not in full_name:
+                raise HTTPError(404, "Invalid repo path")
+            owner, name = full_name.rsplit("/", 1)
+            number_str = m.group("number")
+            number = int(number_str) if number_str else None
+            action = m.group("action") or ("" if number_str else "pulls")
+            return owner, name, number, action
+
+        # No /pulls — this is a plain repo lookup
+        if "/" not in repo_path:
+            raise HTTPError(404, "Invalid repo path")
+        owner, name = repo_path.rsplit("/", 1)
+        return owner, name, None, ""
+
+    @app.api_route("/api/v1/repos/{repo_path:path}", methods=["GET", "POST", "DELETE"])
+    async def repo_dispatcher(request: Request, repo_path: str):
+        owner, name, number, action = _parse_repo_path(repo_path)
+        method = request.method
+
+        # No /pulls in path — repo lookup
+        if action == "":
+            return await _handle_get_repo(request, owner, name)
+
+        # /pulls with no number — list pulls
+        if action == "pulls" and number is None:
+            return await _handle_list_pulls(request, owner, name)
+
+        # /pulls/{number}/...
+        if action == "":
+            return await _handle_get_pull(request, owner, name, number)
+        if action == "files":
+            return await _handle_list_pull_files(request, owner, name, number)
+        if action == "file-source":
+            return await _handle_get_file_source(request, owner, name, number)
+        if action == "annotations":
+            return await _handle_get_annotations(request, owner, name, number)
+        if action == "generate-annotations" and method == "POST":
+            return await _handle_generate_annotations(request, owner, name, number)
+        if action == "cache" and method == "DELETE":
+            return await _handle_clear_cache(request, owner, name, number)
+        if action == "walkthrough" and method == "POST":
+            return await _handle_generate_walkthrough(request, owner, name, number)
+        if action.startswith("specs/"):
+            spec_path = action[len("specs/"):]
+            return await _handle_get_spec_content(request, owner, name, number, spec_path)
+
+        raise HTTPError(404, "Not found")
 
     # --- Error handling ---
 

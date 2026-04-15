@@ -5,7 +5,7 @@ import { SpecContent } from './SpecContent';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 
 export function SpecPanel() {
-  const { isModalOpen, modalRef, owner, repo, prNumber, cachedContent, closeModal, cacheContent } =
+  const { isModalOpen, modalRef, fullName, prNumber, cachedContent, closeModal, cacheContent } =
     useSpecPanelStore();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,11 +19,11 @@ export function SpecPanel() {
     setLoading(true);
     setError(null);
     specs
-      .content(owner, repo, prNumber, path)
+      .content(fullName, prNumber, path)
       .then((content) => cacheContent(path, content))
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [isModalOpen, modalRef, owner, repo, prNumber, cachedContent, cacheContent]);
+  }, [isModalOpen, modalRef, fullName, prNumber, cachedContent, cacheContent]);
 
   if (!isModalOpen || !modalRef) return null;
 

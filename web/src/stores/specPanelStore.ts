@@ -7,8 +7,7 @@ interface SpecPanelState {
   isModalOpen: boolean;
 
   // Context for fetching spec content
-  owner: string;
-  repo: string;
+  fullName: string;
   prNumber: number;
 
   // Cache
@@ -17,20 +16,19 @@ interface SpecPanelState {
   // Actions
   openModal: (ref: SpecRef) => void;
   closeModal: () => void;
-  setContext: (owner: string, repo: string, prNumber: number) => void;
+  setContext: (fullName: string, prNumber: number) => void;
   cacheContent: (path: string, content: SpecContent) => void;
 }
 
 export const useSpecPanelStore = create<SpecPanelState>((set) => ({
   modalRef: null,
   isModalOpen: false,
-  owner: '',
-  repo: '',
+  fullName: '',
   prNumber: 0,
   cachedContent: new Map(),
   openModal: (ref) => set({ isModalOpen: true, modalRef: ref }),
   closeModal: () => set({ isModalOpen: false, modalRef: null }),
-  setContext: (owner, repo, prNumber) => set({ owner, repo, prNumber }),
+  setContext: (fullName, prNumber) => set({ fullName, prNumber }),
   cacheContent: (path, content) =>
     set((state) => {
       const next = new Map(state.cachedContent);

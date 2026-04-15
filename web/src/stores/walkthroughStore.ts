@@ -14,7 +14,7 @@ interface WalkthroughState {
 
   setFamiliarity: (f: number) => void;
   setDepth: (d: 'quick' | 'thorough') => void;
-  generate: (owner: string, repo: string, number: number) => Promise<void>;
+  generate: (fullName: string, number: number) => Promise<void>;
   start: () => void;
   exit: () => void;
   nextStep: () => void;
@@ -53,11 +53,11 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
     set({ depth: d });
   },
 
-  generate: async (owner, repo, number) => {
+  generate: async (fullName, number) => {
     const { familiarity, depth } = get();
     set({ loading: true, error: null });
     try {
-      const wt = await walkthroughApi.generate(owner, repo, number, familiarity, depth);
+      const wt = await walkthroughApi.generate(fullName, number, familiarity, depth);
       set({ walkthrough: wt, loading: false });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to generate walkthrough';
