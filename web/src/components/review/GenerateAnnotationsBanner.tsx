@@ -30,7 +30,7 @@ function ProgressDisplay() {
   }
 
   return (
-    <span className="text-xs text-[var(--text-muted)]">
+    <span className="text-xs text-white">
       <Spinner /> {text}
     </span>
   );
