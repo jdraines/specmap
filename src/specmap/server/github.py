@@ -15,6 +15,21 @@ GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_HEADERS = {"Accept": "application/vnd.github+json"}
 
 
+import math
+import re as _re
+
+
+def _parse_link_page(resp: httpx.Response, rel: str) -> int | None:
+    """Extract page number for a given rel from the Link header."""
+    link = resp.headers.get("link", "")
+    for part in link.split(","):
+        if f'rel="{rel}"' in part:
+            m = _re.search(r"[?&]page=(\d+)", part)
+            if m:
+                return int(m.group(1))
+    return None
+
+
 def _next_link(resp: httpx.Response) -> str | None:
     link = resp.headers.get("link", "")
     for part in link.split(","):
@@ -93,6 +108,58 @@ class GitHubProvider:
                 repos.append(self._normalize_repo(r))
             url = _next_link(resp)
         return repos
+
+    async def list_repos_page(
+        self, client: httpx.AsyncClient, token: str,
+        *, page: int = 1, per_page: int = 20, search: str = "",
+        login: str = "",
+    ) -> dict:
+        if search:
+            # GitHub /user/repos has no search — use search API
+            q = f"{search} user:{login}" if login else search
+            resp = await client.get(
+                f"{self.base_url}/search/repositories",
+                params={"q": q, "sort": "updated", "per_page": str(per_page), "page": str(page)},
+                headers=self._headers(token),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            total = min(data.get("total_count", 0), 1000)  # GitHub caps at 1000
+            items = [self._normalize_repo(r) for r in data.get("items", [])]
+            return {
+                "items": items,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "total_pages": max(1, math.ceil(total / per_page)),
+            }
+        else:
+            resp = await client.get(
+                f"{self.base_url}/user/repos",
+                params={"per_page": str(per_page), "page": str(page), "sort": "updated"},
+                headers=self._headers(token),
+            )
+            resp.raise_for_status()
+            items = [self._normalize_repo(r) for r in resp.json()]
+            last_page = _parse_link_page(resp, "last")
+            if last_page is not None:
+                total_pages = last_page
+                total = total_pages * per_page  # approximate
+            elif len(items) < per_page:
+                # We're on the last (or only) page
+                total_pages = page
+                total = (page - 1) * per_page + len(items)
+            else:
+                # No Link header but full page — assume there's more
+                total_pages = page + 1
+                total = total_pages * per_page
+            return {
+                "items": items,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "total_pages": total_pages,
+            }
 
     async def get_repo(
         self, client: httpx.AsyncClient, token: str, owner: str, name: str

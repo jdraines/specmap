@@ -10,6 +10,7 @@ import type {
   Walkthrough,
   Capabilities,
   GenerateProgress,
+  PaginatedResponse,
 } from './types';
 
 export const auth = {
@@ -24,7 +25,14 @@ export const auth = {
 };
 
 export const repos = {
-  list: () => apiFetch<Repository[]>('/api/v1/repos'),
+  list: (params?: { page?: number; per_page?: number; search?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.per_page) qs.set('per_page', String(params.per_page));
+    if (params?.search) qs.set('search', params.search);
+    const query = qs.toString();
+    return apiFetch<PaginatedResponse<Repository>>(`/api/v1/repos${query ? `?${query}` : ''}`);
+  },
   get: (owner: string, repo: string) => apiFetch<Repository>(`/api/v1/repos/${owner}/${repo}`),
 };
 

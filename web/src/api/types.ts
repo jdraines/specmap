@@ -111,6 +111,14 @@ export interface Capabilities {
   annotations: boolean;
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
 export interface GenerateProgress {
   phase: 'starting' | 'cloning' | 'context' | 'annotating';
   batch?: number;

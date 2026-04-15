@@ -52,6 +52,14 @@ class ForgeProvider(Protocol):
         """Return normalized repos: [{id, owner, name, full_name, private}, ...]."""
         ...
 
+    async def list_repos_page(
+        self, client: httpx.AsyncClient, token: str,
+        *, page: int = 1, per_page: int = 20, search: str = "",
+        login: str = "",
+    ) -> dict:
+        """Return {items: [...], total: int, page: int, per_page: int, total_pages: int}."""
+        ...
+
     async def get_repo(
         self, client: httpx.AsyncClient, token: str, owner: str, name: str
     ) -> dict:
