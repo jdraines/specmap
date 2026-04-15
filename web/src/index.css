@@ -2,7 +2,7 @@
 
 @theme {
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* ── Light theme tokens ── */
@@ -43,10 +43,10 @@
   --wt-border: #818cf8;
   --wt-step-num-bg: #4f46e5;
   --wt-step-num-text: #ffffff;
-  --wt-nav-bg: #1e1b4b;
-  --wt-nav-text: #e0e7ff;
-  --wt-nav-dot: #818cf8;
-  --wt-nav-dot-inactive: #312e81;
+  --wt-nav-bg: #4f46e5;
+  --wt-nav-text: #ffffff;
+  --wt-nav-dot: #c7d2fe;
+  --wt-nav-dot-inactive: #6366f1;
 }
 
 /* ── Dark theme tokens ── */
@@ -87,10 +87,10 @@
   --wt-border: #6366f1;
   --wt-step-num-bg: #6366f1;
   --wt-step-num-text: #ffffff;
-  --wt-nav-bg: #0f0e2a;
-  --wt-nav-text: #c7d2fe;
-  --wt-nav-dot: #818cf8;
-  --wt-nav-dot-inactive: #312e81;
+  --wt-nav-bg: #4338ca;
+  --wt-nav-text: #ffffff;
+  --wt-nav-dot: #c7d2fe;
+  --wt-nav-dot-inactive: #6366f1;
 }
 
 /* ── Base styles ── */

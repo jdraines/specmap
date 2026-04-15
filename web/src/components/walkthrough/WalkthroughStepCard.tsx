@@ -7,7 +7,7 @@ interface WalkthroughStepCardProps {
   totalSteps: number;
 }
 
-function renderTextWithBold(text: string, keyPrefix: string): React.ReactNode[] {
+export function renderTextWithBold(text: string, keyPrefix: string): React.ReactNode[] {
   const parts = text.split(/(\*\*.*?\*\*)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {

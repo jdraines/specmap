@@ -9,7 +9,7 @@ export function WalkthroughNav() {
   const step = walkthrough.steps[currentStep];
 
   return (
-    <div className="font-sans fixed bottom-0 left-0 right-0 z-[9000] bg-[var(--wt-nav-bg)] border-t border-[var(--wt-border)] px-4 py-2 flex items-center gap-3">
+    <div className="font-sans fixed bottom-0 left-0 right-0 z-[9000] bg-[var(--wt-nav-bg)] border-t border-[var(--wt-border)] px-4 py-2.5 flex items-center gap-3 shadow-[0_-4px_20px_rgba(79,70,229,0.3)]">
       {/* Progress dots */}
       <div className="flex gap-1">
         {walkthrough.steps.map((_, i) => (
