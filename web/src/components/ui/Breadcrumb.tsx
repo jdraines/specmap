@@ -12,7 +12,7 @@ export function Breadcrumb({ items }: { items: Crumb[] }) {
         <span key={i} className="flex items-center gap-1.5">
           {i > 0 && <span className="text-[var(--border-strong)]">&gt;</span>}
           {item.to ? (
-            <Link to={item.to} className="text-[var(--accent)] hover:underline">
+            <Link to={item.to} className="text-[var(--accent-text)] hover:underline">
               {item.label}
             </Link>
           ) : (
