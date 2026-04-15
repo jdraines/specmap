@@ -431,18 +431,37 @@ def create_app(config: ServerConfig) -> FastAPI:
 
         items = []
         for db_repo, pulls in zip(db_repos, pulls_per_repo):
-            recent = [_pull_response(
-                db.upsert_pull(
-                    repository_id=db_repo["id"],
-                    number=p["number"],
-                    title=p["title"],
-                    state=p["state"],
-                    head_branch=p["head_branch"],
-                    base_branch=p["base_branch"],
-                    head_sha=p["head_sha"],
-                    author_login=p["author_login"],
-                )
-            ) for p in pulls]
+            recent = []
+            for p in pulls:
+                if p["head_sha"]:
+                    recent.append(_pull_response(
+                        db.upsert_pull(
+                            repository_id=db_repo["id"],
+                            number=p["number"],
+                            title=p["title"],
+                            state=p["state"],
+                            head_branch=p["head_branch"],
+                            base_branch=p["base_branch"],
+                            head_sha=p["head_sha"],
+                            author_login=p["author_login"],
+                        )
+                    ))
+                else:
+                    # sha not yet available (GitLab async population);
+                    # show on dashboard without persisting to DB
+                    recent.append({
+                        "id": 0,
+                        "repository_id": db_repo["id"],
+                        "number": p["number"],
+                        "title": p["title"],
+                        "state": p["state"],
+                        "head_branch": p["head_branch"],
+                        "base_branch": p["base_branch"],
+                        "head_sha": "",
+                        "author_login": p.get("author_login", ""),
+                        "created_at": "",
+                        "updated_at": "",
+                    })
             items.append(_repo_response(db_repo, recent_pulls=recent))
 
         return {
