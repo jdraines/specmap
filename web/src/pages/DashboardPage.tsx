@@ -1,13 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import type { PaginatedResponse, Repository } from '../api/types';
 import { repos } from '../api/endpoints';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { useAuthStore } from '../stores/authStore';
 
 const PAGE_SIZE = 20;
 const DEBOUNCE_MS = 300;
 
 export function DashboardPage() {
+  const currentRepo = useAuthStore((s) => s.currentRepo);
+  const navigate = useNavigate();
+  const redirected = useRef(false);
+
+  useEffect(() => {
+    if (currentRepo && !redirected.current) {
+      redirected.current = true;
+      navigate(`/r/${currentRepo}`, { replace: true });
+    }
+  }, [currentRepo, navigate]);
   const [data, setData] = useState<PaginatedResponse<Repository> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

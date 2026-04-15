@@ -4,6 +4,7 @@ import { auth } from '../api/endpoints';
 
 interface AuthState {
   user: User | null;
+  currentRepo: string | null;
   loading: boolean;
   fetchUser: () => Promise<void>;
   logout: () => Promise<void>;
@@ -11,14 +12,15 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
+  currentRepo: null,
   loading: true,
   fetchUser: async () => {
     try {
       const status = await auth.status();
       if (status.authenticated && status.user) {
-        set({ user: status.user, loading: false });
+        set({ user: status.user, currentRepo: status.current_repo ?? null, loading: false });
       } else {
-        set({ user: null, loading: false });
+        set({ user: null, currentRepo: status.current_repo ?? null, loading: false });
       }
     } catch {
       set({ user: null, loading: false });
