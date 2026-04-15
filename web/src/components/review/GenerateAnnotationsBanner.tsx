@@ -91,12 +91,12 @@ export function GenerateAnnotationsBanner({
 
       <div className="flex flex-wrap items-center gap-4 mb-3">
         <div className="flex items-center gap-1">
-          <span className="text-xs text-[var(--text-muted)] mr-1">mode:</span>
+          <span className="text-xs font-semibold text-white mr-1">mode:</span>
           {modeOptions.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setMode(opt.value)}
-              className={`px-2 py-1 text-xs border cursor-pointer ${
+              className={`px-2 py-1 text-xs font-medium border cursor-pointer ${
                 mode === opt.value
                   ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
                   : 'bg-[var(--surface-1)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--text-muted)]'
@@ -107,7 +107,7 @@ export function GenerateAnnotationsBanner({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-xs text-[var(--text-muted)] mr-1">timeout:</span>
+          <span className="text-xs font-semibold text-white mr-1">timeout:</span>
           <input
             type="number"
             min={30}
