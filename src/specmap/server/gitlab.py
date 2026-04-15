@@ -116,6 +116,36 @@ class GitLabProvider:
             url = _gitlab_next_url(resp)
         return repos
 
+    async def list_repos_page(
+        self, client: httpx.AsyncClient, token: str,
+        *, page: int = 1, per_page: int = 20, search: str = "",
+        login: str = "",
+    ) -> dict:
+        params: dict[str, str] = {
+            "membership": "true",
+            "order_by": "updated_at",
+            "sort": "desc",
+            "per_page": str(per_page),
+            "page": str(page),
+        }
+        if search:
+            params["search"] = search
+        resp = await client.get(
+            f"{self.api_base}/projects", params=params,
+            headers=self._headers(token),
+        )
+        resp.raise_for_status()
+        items = [self._normalize_repo(p) for p in resp.json()]
+        total = int(resp.headers.get("x-total", "0"))
+        total_pages = int(resp.headers.get("x-total-pages", "1"))
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+        }
+
     async def get_repo(
         self, client: httpx.AsyncClient, token: str, owner: str, name: str
     ) -> dict:

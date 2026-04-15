@@ -229,8 +229,14 @@ def create_app(config: ServerConfig) -> FastAPI:
         provider = _provider(request)
         try:
             user_data = await provider.get_user(_http(request), token)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                if provider.name == "gitlab":
+                    raise HTTPError(400, "Token lacks required scopes. GitLab tokens need at least: api or read_api + read_user + read_repository.")
+                raise HTTPError(400, "Token lacks required permissions (403 Forbidden).")
+            raise HTTPError(400, f"Invalid token — could not authenticate ({e.response.status_code}).")
         except Exception:
-            raise HTTPError(400, "Invalid token — could not authenticate with forge")
+            raise HTTPError(400, "Invalid token — could not authenticate with forge.")
 
         db = _db(request)
         user = db.upsert_user(
@@ -380,11 +386,27 @@ def create_app(config: ServerConfig) -> FastAPI:
         provider = _provider(request)
         http = _http(request)
         db = _db(request)
-        repo_list = await provider.list_repos(http, token)
 
-        # Upsert all repos into DB
+        # Parse pagination / search params
+        try:
+            page = max(1, int(request.query_params.get("page", "1")))
+        except (ValueError, TypeError):
+            page = 1
+        try:
+            per_page = max(1, min(100, int(request.query_params.get("per_page", "20"))))
+        except (ValueError, TypeError):
+            per_page = 20
+        search = request.query_params.get("search", "").strip()
+
+        page_data = await provider.list_repos_page(
+            http, token,
+            page=page, per_page=per_page, search=search,
+            login=claims.get("login", ""),
+        )
+
+        # Upsert repos into DB + fetch PRs only for this page
         db_repos = []
-        for r in repo_list:
+        for r in page_data["items"]:
             db_repo = db.upsert_repo(
                 provider=provider.name,
                 provider_id=r["id"],
@@ -395,7 +417,6 @@ def create_app(config: ServerConfig) -> FastAPI:
             )
             db_repos.append(db_repo)
 
-        # Fetch recent PRs for all repos in parallel
         async def _fetch_recent_pulls(r: dict) -> list[dict]:
             try:
                 return await provider.list_pulls(
@@ -408,7 +429,7 @@ def create_app(config: ServerConfig) -> FastAPI:
             *[_fetch_recent_pulls(r) for r in db_repos]
         )
 
-        result = []
+        items = []
         for db_repo, pulls in zip(db_repos, pulls_per_repo):
             recent = [_pull_response(
                 db.upsert_pull(
@@ -422,17 +443,15 @@ def create_app(config: ServerConfig) -> FastAPI:
                     author_login=p["author_login"],
                 )
             ) for p in pulls]
-            result.append(_repo_response(db_repo, recent_pulls=recent))
+            items.append(_repo_response(db_repo, recent_pulls=recent))
 
-        # Sort repos by most recent PR updated_at (descending)
-        def _latest_pull_ts(repo: dict) -> str:
-            pulls = repo.get("recent_pulls") or []
-            if not pulls:
-                return ""
-            return max(p["updated_at"] for p in pulls)
-
-        result.sort(key=_latest_pull_ts, reverse=True)
-        return result
+        return {
+            "items": items,
+            "total": page_data["total"],
+            "page": page_data["page"],
+            "per_page": page_data["per_page"],
+            "total_pages": page_data["total_pages"],
+        }
 
     @app.get("/api/v1/repos/{owner}/{repo}")
     async def get_repo(request: Request, owner: str, repo: str):
