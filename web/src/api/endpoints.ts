@@ -56,12 +56,14 @@ export const pulls = {
     force: boolean = false,
     timeout?: number,
     onProgress?: (data: GenerateProgress) => void,
+    resume: boolean = false,
+    concurrency: number = 4,
   ) =>
     apiFetchSSE(
       `/api/v1/repos/${fullName}/pulls/${number}/generate-annotations`,
-      { mode, force, timeout },
+      { mode, force, timeout, resume, concurrency },
       onProgress ?? (() => {}),
-      ((timeout ?? 120) * 1000) + 60_000,
+      ((timeout ?? 300) * 1000) + 60_000,
     ),
   clearCache: (fullName: string, number: number) =>
     apiFetch<{ status: string }>(

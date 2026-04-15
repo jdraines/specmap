@@ -21,6 +21,8 @@ interface ReviewState {
     mode?: 'lite' | 'full',
     force?: boolean,
     timeout?: number,
+    resume?: boolean,
+    concurrency?: number,
   ) => Promise<void>;
   clearCache: (fullName: string, number: number) => Promise<void>;
   checkCanGenerate: () => Promise<void>;
@@ -68,23 +70,28 @@ export const useReviewStore = create<ReviewState>((set) => ({
       set({ error: String(err), loading: false });
     }
   },
-  generateAnnotations: async (fullName, number, mode = 'full', force = false, timeout?: number) => {
+  generateAnnotations: async (fullName, number, mode = 'full', force = false, timeout?: number, resume = false, concurrency = 4) => {
     set({ generating: true, generateError: null, generateProgress: null });
     try {
       const specmap = await pulls.generateAnnotations(
         fullName, number, mode, force, timeout,
         (progress) => set({ generateProgress: progress }),
+        resume, concurrency,
       );
+      const partialMsg = specmap.partial
+        ? `Partial results: ${specmap.completed_batches}/${specmap.total_batches} batches completed. Increase timeout or resume to continue.`
+        : null;
       set({
         specmapFile: specmap,
         annotationsByFile: buildAnnotationsByFile(specmap.annotations ?? []),
         generating: false,
         generateProgress: null,
+        generateError: partialMsg,
       });
     } catch (e) {
       let msg: string;
       if (e instanceof DOMException && e.name === 'AbortError') {
-        msg = "Generation timed out — the PR may be too large. Try 'lite' mode.";
+        msg = "Generation timed out — the PR may be too large. Try 'lite' mode or increase timeout.";
       } else {
         msg = e instanceof Error ? e.message : 'Failed to generate annotations';
       }

@@ -8,6 +8,7 @@ import json
 import logging
 import subprocess
 import tempfile
+import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
@@ -27,7 +28,7 @@ _MAX_SPEC_FILES = 20
 _MAX_CHANGED_FILES = 50
 _MAX_FILE_SIZE = 100_000  # 100KB
 _CLONE_TIMEOUT = 60
-_ANNOTATE_TIMEOUT = 120
+_ANNOTATE_TIMEOUT = 300
 
 
 async def generate_lite(
@@ -45,6 +46,8 @@ async def generate_lite(
     llm_api_base: str,
     annotate_timeout: int = _ANNOTATE_TIMEOUT,
     on_progress: Callable[[dict], Awaitable[None]] | None = None,
+    exclude_files: set[str] | None = None,
+    concurrency: int = 1,
 ) -> dict:
     """Generate annotations using forge APIs + LLM (no git clone)."""
     from specmap.server.forge import ForgeNotFound
@@ -111,6 +114,10 @@ async def generate_lite(
         except Exception:
             continue
 
+    # Filter out files already annotated (resume support)
+    if exclude_files:
+        changes = [c for c in changes if c.file_path not in exclude_files]
+
     if not changes:
         return _build_result(head_branch, base_branch, head_sha, [])
 
@@ -129,17 +136,27 @@ async def generate_lite(
     )
     llm_client = LLMClient(config)
     mapper = Mapper(llm_client, repo_root="")
-    annotations = await asyncio.wait_for(
-        mapper.annotate_changes(
-            changes, spec_contents, batch_token_budget=8000,
-            on_progress=_batch_progress,
-        ),
-        timeout=annotate_timeout,
+    deadline = time.monotonic() + annotate_timeout
+    annotations = await mapper.annotate_changes(
+        changes, spec_contents, batch_token_budget=8000,
+        on_progress=_batch_progress,
+        deadline=deadline,
+        concurrency=concurrency,
     )
 
     # 6. Build result
     ann_dicts = _annotations_to_dicts(annotations)
-    return _build_result(head_branch, base_branch, head_sha, ann_dicts)
+    result = _build_result(head_branch, base_branch, head_sha, ann_dicts)
+
+    # Detect partial completion
+    if mapper.completed_batches < mapper.total_batches:
+        if not annotations:
+            raise TimeoutError("Annotation generation timed out with no completed batches")
+        result["partial"] = True
+        result["completed_batches"] = mapper.completed_batches
+        result["total_batches"] = mapper.total_batches
+
+    return result
 
 
 async def generate_full(
@@ -158,6 +175,8 @@ async def generate_full(
     pr_title: str = "",
     annotate_timeout: int = _ANNOTATE_TIMEOUT,
     on_progress: Callable[[dict], Awaitable[None]] | None = None,
+    exclude_files: set[str] | None = None,
+    concurrency: int = 1,
 ) -> dict:
     """Generate annotations by cloning repo and running the full annotate() pipeline."""
     clone = provider.clone_url(owner, repo, token)
@@ -217,15 +236,16 @@ async def generate_full(
             os.environ[k] = v
 
         try:
-            await asyncio.wait_for(
-                annotate(
-                    repo_root=tmpdir,
-                    code_changes=changed_files if changed_files else None,
-                    branch=head_branch,
-                    context=context,
-                    on_progress=_batch_progress,
-                ),
-                timeout=annotate_timeout,
+            deadline = time.monotonic() + annotate_timeout
+            ann_result = await annotate(
+                repo_root=tmpdir,
+                code_changes=changed_files if changed_files else None,
+                branch=head_branch,
+                context=context,
+                on_progress=_batch_progress,
+                deadline=deadline,
+                exclude_files=exclude_files,
+                concurrency=concurrency,
             )
         finally:
             for k, v in env_backup.items():
@@ -243,6 +263,13 @@ async def generate_full(
         # 6. Serialize
         data = json.loads(specmap.model_dump_json())
         data["updated_by"] = "server:generate"
+
+        # Propagate partial flags from annotate result
+        if ann_result.get("partial"):
+            data["partial"] = True
+            data["completed_batches"] = ann_result["completed_batches"]
+            data["total_batches"] = ann_result["total_batches"]
+
         return data
 
 

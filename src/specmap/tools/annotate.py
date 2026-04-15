@@ -30,6 +30,9 @@ async def annotate(
     context: str | None = None,
     dry_run: bool = False,
     on_progress: Callable[[int, int], Awaitable[None] | None] | None = None,
+    deadline: float | None = None,
+    exclude_files: set[str] | None = None,
+    concurrency: int = 1,
 ) -> dict:
     """Generate annotations for code changes with spec references.
 
@@ -106,6 +109,10 @@ async def annotate(
     # Filter out ignored files
     changes = [c for c in changes if not _is_ignored(c.file_path, config.ignore_patterns)]
 
+    # Filter out files already annotated (resume support)
+    if exclude_files:
+        changes = [c for c in changes if c.file_path not in exclude_files]
+
     if not changes:
         if not dry_run:
             specmap.head_sha = current_head
@@ -136,6 +143,8 @@ async def annotate(
         changes, spec_contents, context=context,
         batch_token_budget=config.batch_token_budget,
         on_progress=on_progress,
+        deadline=deadline,
+        concurrency=concurrency,
     )
 
     # Set staleness on newly generated annotations
@@ -162,7 +171,7 @@ async def annotate(
 
     # 9. Return summary
     usage = llm_client.get_usage()
-    return {
+    result = {
         "status": "ok",
         "annotations_created": max(0, created),
         "annotations_updated": max(0, updated),
@@ -172,6 +181,14 @@ async def annotate(
         "llm_usage": usage,
         "branch": branch,
     }
+
+    # Detect partial completion
+    if mapper.completed_batches < mapper.total_batches:
+        result["partial"] = True
+        result["completed_batches"] = mapper.completed_batches
+        result["total_batches"] = mapper.total_batches
+
+    return result
 
 
 async def _incremental_annotate(

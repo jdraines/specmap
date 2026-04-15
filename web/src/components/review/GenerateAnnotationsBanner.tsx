@@ -29,7 +29,7 @@ function ProgressDisplay() {
   }
 
   return (
-    <span className="text-xs text-white">
+    <span className="text-xs text-[var(--text-secondary)]">
       <Spinner /> {text}
     </span>
   );
@@ -40,19 +40,22 @@ export function GenerateAnnotationsBanner({
   prNumber,
   hasAnnotations,
 }: GenerateAnnotationsBannerProps) {
-  const { generating, generateError, canGenerate, generateAnnotations, clearCache, clearingCache } =
+  const { generating, generateError, canGenerate, generateAnnotations, clearCache, clearingCache, specmapFile } =
     useReviewStore();
   const [mode, setMode] = useState<'lite' | 'full'>('full');
-  const [timeout, setTimeout_] = useState(120);
+  const [timeout, setTimeout_] = useState(300);
+  const [concurrency, setConcurrency] = useState(4);
 
   if (!canGenerate) return null;
+
+  const isPartial = specmapFile?.partial === true;
 
   // Existing annotations: show small regenerate link + clear cache button
   if (hasAnnotations) {
     return (
-      <div className="font-sans flex items-center gap-2 mb-4 px-1">
+      <div className="font-sans flex items-center gap-2 mb-4 px-1 flex-wrap">
         <button
-          onClick={() => generateAnnotations(fullName, prNumber, mode, true, timeout)}
+          onClick={() => generateAnnotations(fullName, prNumber, mode, true, timeout, false, concurrency)}
           disabled={generating || clearingCache}
           className="text-xs text-[var(--text-muted)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -64,6 +67,18 @@ export function GenerateAnnotationsBanner({
             'Regenerate annotations'
           )}
         </button>
+        {isPartial && !generating && (
+          <>
+            <span className="text-xs text-[var(--text-muted)]">·</span>
+            <button
+              onClick={() => generateAnnotations(fullName, prNumber, mode, false, timeout, true, concurrency)}
+              disabled={generating || clearingCache}
+              className="text-xs text-[var(--accent-text)] bg-transparent border-0 cursor-pointer underline hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Resume annotation generation ({specmapFile.completed_batches}/{specmapFile.total_batches} batches done)
+            </button>
+          </>
+        )}
         <span className="text-xs text-[var(--text-muted)]">·</span>
         <button
           onClick={() => clearCache(fullName, prNumber)}
@@ -89,7 +104,7 @@ export function GenerateAnnotationsBanner({
 
       <div className="flex flex-wrap items-center gap-4 mb-3">
         <div className="flex items-center gap-1">
-          <span className="text-xs font-semibold text-white mr-1">mode:</span>
+          <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">mode:</span>
           {modeOptions.map((opt) => (
             <button
               key={opt.value}
@@ -105,22 +120,33 @@ export function GenerateAnnotationsBanner({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-xs font-semibold text-white mr-1">timeout:</span>
+          <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">timeout:</span>
           <input
             type="number"
             min={30}
-            max={600}
+            max={1800}
             value={timeout}
-            onChange={(e) => setTimeout_(Math.max(30, Math.min(600, Number(e.target.value))))}
+            onChange={(e) => setTimeout_(Math.max(30, Math.min(1800, Number(e.target.value))))}
             className="w-16 px-1.5 py-1 text-xs border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-secondary)]"
           />
           <span className="text-xs text-[var(--text-muted)]">s</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">concurrency:</span>
+          <input
+            type="number"
+            min={1}
+            max={8}
+            value={concurrency}
+            onChange={(e) => setConcurrency(Math.max(1, Math.min(8, Number(e.target.value))))}
+            className="w-12 px-1.5 py-1 text-xs border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-secondary)]"
+          />
         </div>
       </div>
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => generateAnnotations(fullName, prNumber, mode, false, timeout)}
+          onClick={() => generateAnnotations(fullName, prNumber, mode, false, timeout, false, concurrency)}
           disabled={generating}
           className="px-3 py-1.5 text-xs bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
