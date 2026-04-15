@@ -10,10 +10,12 @@ interface WalkthroughState {
   error: string | null;
   familiarity: number; // 1-3
   depth: 'quick' | 'thorough';
+  timeout: number; // seconds
   available: boolean; // from capabilities
 
   setFamiliarity: (f: number) => void;
   setDepth: (d: 'quick' | 'thorough') => void;
+  setTimeout: (t: number) => void;
   generate: (fullName: string, number: number) => Promise<void>;
   start: () => void;
   exit: () => void;
@@ -41,6 +43,7 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   error: null,
   familiarity: loadStorage('specmap-wt-familiarity', 2),
   depth: loadStorage('specmap-wt-depth', 'quick'),
+  timeout: loadStorage('specmap-wt-timeout', 300),
   available: false,
 
   setFamiliarity: (f) => {
@@ -53,14 +56,24 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
     set({ depth: d });
   },
 
+  setTimeout: (t) => {
+    localStorage.setItem('specmap-wt-timeout', JSON.stringify(t));
+    set({ timeout: t });
+  },
+
   generate: async (fullName, number) => {
-    const { familiarity, depth } = get();
+    const { familiarity, depth, timeout } = get();
     set({ loading: true, error: null });
     try {
-      const wt = await walkthroughApi.generate(fullName, number, familiarity, depth);
+      const wt = await walkthroughApi.generate(fullName, number, familiarity, depth, timeout);
       set({ walkthrough: wt, loading: false });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to generate walkthrough';
+      let msg: string;
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        msg = "Generation timed out — the PR may be too large. Try 'quick' depth or increase timeout.";
+      } else {
+        msg = e instanceof Error ? e.message : 'Failed to generate walkthrough';
+      }
       set({ error: msg, loading: false });
     }
   },

@@ -82,13 +82,13 @@ export const capabilities = {
 };
 
 export const walkthrough = {
-  generate: (fullName: string, number: number, familiarity: number, depth: string) =>
+  generate: (fullName: string, number: number, familiarity: number, depth: string, timeout: number = 300) =>
     apiFetch<Walkthrough>(
       `/api/v1/repos/${fullName}/pulls/${number}/walkthrough`,
       {
         method: 'POST',
         body: JSON.stringify({ familiarity, depth }),
       },
-      120_000,
+      timeout * 1000 + 60_000,
     ),
 };
