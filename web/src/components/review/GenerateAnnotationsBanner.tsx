@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { Spinner } from '../ui/Spinner';
+import { useElapsedTime } from '../../hooks/useElapsedTime';
 
 interface GenerateAnnotationsBannerProps {
   fullName: string;
@@ -42,9 +43,12 @@ export function GenerateAnnotationsBanner({
 }: GenerateAnnotationsBannerProps) {
   const { generating, generateError, canGenerate, generateAnnotations, clearCache, clearingCache, specmapFile } =
     useReviewStore();
+  const elapsed = useElapsedTime(generating);
   const [mode, setMode] = useState<'lite' | 'full'>('full');
   const [timeout, setTimeout_] = useState(300);
+  const [timeoutInput, setTimeoutInput] = useState('300');
   const [concurrency, setConcurrency] = useState(4);
+  const [concurrencyInput, setConcurrencyInput] = useState('4');
 
   if (!canGenerate) return null;
 
@@ -87,7 +91,7 @@ export function GenerateAnnotationsBanner({
         >
           {clearingCache ? 'Clearing...' : 'Clear cache'}
         </button>
-        {generating && <ProgressDisplay />}
+        {generating && <><ProgressDisplay /> <span className="text-xs text-[var(--text-muted)]">{elapsed}</span></>}
         {generateError && (
           <span className="text-xs text-[var(--error-text)]">{generateError}</span>
         )}
@@ -125,8 +129,9 @@ export function GenerateAnnotationsBanner({
             type="number"
             min={30}
             max={1800}
-            value={timeout}
-            onChange={(e) => setTimeout_(Math.max(30, Math.min(1800, Number(e.target.value))))}
+            value={timeoutInput}
+            onChange={(e) => setTimeoutInput(e.target.value)}
+            onBlur={() => { const v = Math.max(30, Math.min(1800, Number(timeoutInput) || 300)); setTimeout_(v); setTimeoutInput(String(v)); }}
             className="w-16 px-1.5 py-1 text-xs border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-secondary)]"
           />
           <span className="text-xs text-[var(--text-muted)]">s</span>
@@ -137,8 +142,9 @@ export function GenerateAnnotationsBanner({
             type="number"
             min={1}
             max={8}
-            value={concurrency}
-            onChange={(e) => setConcurrency(Math.max(1, Math.min(8, Number(e.target.value))))}
+            value={concurrencyInput}
+            onChange={(e) => setConcurrencyInput(e.target.value)}
+            onBlur={() => { const v = Math.max(1, Math.min(8, Number(concurrencyInput) || 4)); setConcurrency(v); setConcurrencyInput(String(v)); }}
             className="w-12 px-1.5 py-1 text-xs border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-secondary)]"
           />
         </div>
@@ -152,7 +158,7 @@ export function GenerateAnnotationsBanner({
         >
           {generating ? 'Generating...' : 'Generate Annotations'}
         </button>
-        {generating && <ProgressDisplay />}
+        {generating && <><ProgressDisplay /> <span className="text-xs text-[var(--text-muted)]">{elapsed}</span></>}
       </div>
 
       {generateError && (
