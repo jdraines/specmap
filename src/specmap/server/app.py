@@ -1060,8 +1060,8 @@ def create_app(config: ServerConfig) -> FastAPI:
                 "title": step.title,
                 "narrative": step.narrative,
                 "file": step.file,
-                "start_line": step.start_line,
-                "end_line": step.end_line,
+                "start_line": step.start_line or 0,
+                "end_line": step.end_line or 0,
                 "refs": refs,
             })
 
