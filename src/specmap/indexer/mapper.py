@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+
+logger = logging.getLogger("specmap.mapper")
 
 from specmap.indexer.code_analyzer import CodeChange
 from specmap.indexer.hasher import hash_code_lines
@@ -65,6 +68,15 @@ class Mapper:
 
         all_annotations: list[Annotation] = []
 
+        # Build diff_ranges_by_file from CodeChange.diff_ranges
+        diff_ranges_by_file: dict[str, list[tuple[int, int]]] | None = None
+        built: dict[str, list[tuple[int, int]]] = {}
+        for change in changes:
+            if change.diff_ranges:
+                built.setdefault(change.file_path, []).extend(change.diff_ranges)
+        if built:
+            diff_ranges_by_file = built
+
         # Build spec sections context (shared across all batches)
         spec_sections = _build_spec_sections(spec_contents)
 
@@ -77,7 +89,7 @@ class Mapper:
             # Concurrent batch processing
             all_annotations = await self._process_batches_concurrent(
                 batches, grouped, file_contents, spec_sections, context,
-                on_progress, deadline, concurrency,
+                on_progress, deadline, concurrency, diff_ranges_by_file,
             )
         else:
             # Sequential batch processing
@@ -87,6 +99,7 @@ class Mapper:
 
                 annotations = await self._process_single_batch(
                     batch_files, grouped, file_contents, spec_sections, context,
+                    diff_ranges_by_file,
                 )
                 all_annotations.extend(annotations)
                 self.completed_batches = batch_idx + 1
@@ -105,6 +118,7 @@ class Mapper:
         file_contents: dict[str, str],
         spec_sections: dict[str, list[dict]],
         context: str | None,
+        diff_ranges_by_file: dict[str, list[tuple[int, int]]] | None = None,
     ) -> list[Annotation]:
         """Process a single batch of files. Returns annotations or empty list on error."""
         code_change_dicts = []
@@ -117,6 +131,7 @@ class Mapper:
                     "start_line": c.start_line,
                     "end_line": c.end_line,
                     "content": c.content,
+                    "diff_ranges": c.diff_ranges,
                 })
 
         messages = build_annotation_prompt(code_change_dicts, spec_sections, context=context)
@@ -127,7 +142,7 @@ class Mapper:
                 messages, response_format=AnnotationResponse
             )
             if isinstance(result, AnnotationResponse):
-                return _convert_results(result, file_contents)
+                return _convert_results(result, file_contents, diff_ranges_by_file)
         except Exception as e:
             print(
                 f"[specmap] Warning: LLM annotation failed for {batch_label}: {e}",
@@ -145,6 +160,7 @@ class Mapper:
         on_progress: Callable[[int, int], Awaitable[None] | None] | None,
         deadline: float | None,
         concurrency: int,
+        diff_ranges_by_file: dict[str, list[tuple[int, int]]] | None = None,
     ) -> list[Annotation]:
         """Process batches concurrently with a semaphore."""
         sem = asyncio.Semaphore(concurrency)
@@ -159,6 +175,7 @@ class Mapper:
                     return []
                 annotations = await self._process_single_batch(
                     batch_files, grouped, file_contents, spec_sections, context,
+                    diff_ranges_by_file,
                 )
                 completed += 1
                 self.completed_batches = completed
@@ -221,14 +238,34 @@ def _build_spec_sections(
     return spec_sections
 
 
+def _overlaps_any_range(start: int, end: int, ranges: list[tuple[int, int]]) -> bool:
+    """Check if [start, end] overlaps any (r_start, r_end) range."""
+    return any(start <= r_end and end >= r_start for r_start, r_end in ranges)
+
+
 def _convert_results(
     response: AnnotationResponse,
     file_contents: dict[str, str] | None = None,
+    diff_ranges_by_file: dict[str, list[tuple[int, int]]] | None = None,
 ) -> list[Annotation]:
-    """Convert LLM AnnotationResponse to Annotation models."""
+    """Convert LLM AnnotationResponse to Annotation models.
+
+    If diff_ranges_by_file is provided, annotations that don't overlap any
+    diff range for their file are dropped.
+    """
     annotations: list[Annotation] = []
 
     for result in response.annotations:
+        # Filter: annotation must overlap at least one diff range
+        if diff_ranges_by_file and result.file in diff_ranges_by_file:
+            ranges = diff_ranges_by_file[result.file]
+            if not _overlaps_any_range(result.start_line, result.end_line, ranges):
+                logger.warning(
+                    "Dropping annotation %s:%d-%d: does not overlap any diff range",
+                    result.file, result.start_line, result.end_line,
+                )
+                continue
+
         refs = [
             SpecRef(
                 id=ref.ref_number,

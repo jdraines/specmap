@@ -36,6 +36,7 @@
   --focus-ring: #2563eb;
   --kbd-bg: #f1f5f9;
   --kbd-border: #cbd5e1;
+  --annotation-spotlight-bg: color-mix(in srgb, var(--annotation-border) 8%, transparent);
 
   /* Walkthrough "boutique" tokens */
   --wt-gradient-from: #eff6ff;
@@ -80,6 +81,7 @@
   --focus-ring: #3b82f6;
   --kbd-bg: #1e293b;
   --kbd-border: #334155;
+  --annotation-spotlight-bg: color-mix(in srgb, var(--annotation-border) 12%, transparent);
 
   /* Walkthrough "boutique" tokens */
   --wt-gradient-from: #1e1b4b;
@@ -188,7 +190,11 @@ body {
   opacity: 0.35;
 }
 
-/* Active code rows: left border accent on the gutter cell */
+/* Active code rows: background wash + left border accent on the gutter cell */
+tr.ann-line-hl > td {
+  background-color: var(--annotation-spotlight-bg) !important;
+}
+
 tr.ann-line-hl > td:first-child {
   box-shadow: inset 3px 0 0 var(--annotation-border);
 }

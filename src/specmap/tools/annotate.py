@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from specmap.config import SPEC_EXCLUDE_DIRS, SPEC_EXCLUDE_FILENAMES, CoreConfig
-from specmap.indexer.code_analyzer import CodeAnalyzer
+from specmap.indexer.code_analyzer import CodeAnalyzer, parse_patch_ranges
 from specmap.indexer.diff_optimizer import (
     classify_annotations,
     parse_incremental_diff,
@@ -34,6 +34,7 @@ async def annotate(
     exclude_files: set[str] | None = None,
     concurrency: int = 1,
     config: CoreConfig | None = None,
+    file_patches: dict[str, str] | None = None,
 ) -> dict:
     """Generate annotations for code changes with spec references.
 
@@ -97,12 +98,16 @@ async def annotate(
             if file_content:
                 from specmap.indexer.code_analyzer import CodeChange
 
+                dr = None
+                if file_patches and fp in file_patches:
+                    dr = parse_patch_ranges(file_patches[fp]) or None
                 changes.append(CodeChange(
                     file_path=fp,
                     start_line=1,
                     end_line=len(file_content.splitlines()),
                     change_type="modified",
                     content=file_content,
+                    diff_ranges=dr,
                 ))
     else:
         changes = analyzer.get_changed_files(repo_root, specmap.base_branch)
@@ -258,12 +263,17 @@ async def _incremental_annotate(
         file_content = analyzer.get_file_content(repo_root, fp)
         if file_content:
             from specmap.indexer.code_analyzer import CodeChange
+            dr = None
+            if fp in file_hunks:
+                dr = [(h.new_start, h.new_start + h.new_count - 1)
+                      for h in file_hunks[fp].hunks if h.new_count > 0] or None
             changes.append(CodeChange(
                 file_path=fp,
                 start_line=1,
                 end_line=len(file_content.splitlines()),
                 change_type="modified",
                 content=file_content,
+                diff_ranges=dr,
             ))
 
     # Filter ignored
@@ -396,12 +406,17 @@ async def _working_tree_annotate(
                 file_content = analyzer.get_file_content(repo_root, fp)
                 if file_content:
                     from specmap.indexer.code_analyzer import CodeChange
+                    dr = None
+                    if fp in wt_hunks:
+                        dr = [(h.new_start, h.new_start + h.new_count - 1)
+                              for h in wt_hunks[fp].hunks if h.new_count > 0] or None
                     changes.append(CodeChange(
                         file_path=fp,
                         start_line=1,
                         end_line=len(file_content.splitlines()),
                         change_type="modified",
                         content=file_content,
+                        diff_ranges=dr,
                     ))
             changes = [c for c in changes if not _is_ignored(c.file_path, config.ignore_patterns)]
 

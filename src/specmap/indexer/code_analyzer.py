@@ -19,6 +19,42 @@ class CodeChange:
     end_line: int
     change_type: str  # "added", "modified", "deleted"
     content: str  # the changed lines
+    diff_ranges: list[tuple[int, int]] | None = None  # target-side changed line ranges
+
+
+def parse_patch_ranges(patch: str) -> list[tuple[int, int]]:
+    """Extract target-side changed line ranges from a per-file unified diff patch.
+
+    Parses patch text as returned by GitHub/GitLab APIs (no --- a/ / +++ b/ headers).
+    Returns a list of (start_line, end_line) tuples for changed regions.
+    For pure-deletion hunks, returns the target-side insertion point.
+    Returns [] on empty or unparseable input.
+    """
+    if not patch or not patch.strip():
+        return []
+    # GitHub/GitLab per-file patches lack file headers — synthesize them for unidiff
+    full_diff = f"--- a/file\n+++ b/file\n{patch}"
+    try:
+        patchset = unidiff.PatchSet.from_string(full_diff)
+    except Exception:
+        return []
+    ranges: list[tuple[int, int]] = []
+    for pf in patchset:
+        for hunk in pf:
+            min_line: int | None = None
+            max_line: int | None = None
+            for line in hunk:
+                if line.is_added and line.target_line_no is not None:
+                    if min_line is None or line.target_line_no < min_line:
+                        min_line = line.target_line_no
+                    if max_line is None or line.target_line_no > max_line:
+                        max_line = line.target_line_no
+            if min_line is not None and max_line is not None:
+                ranges.append((min_line, max_line))
+            elif hunk.target_start is not None:
+                # Pure deletion — mark the target-side insertion point
+                ranges.append((hunk.target_start, hunk.target_start))
+    return ranges
 
 
 class CodeAnalyzer:
@@ -93,6 +129,7 @@ class CodeAnalyzer:
                         end_line=max_line,
                         change_type=file_change_type,
                         content="".join(added_lines),
+                        diff_ranges=[(min_line, max_line)],
                     ))
 
         return changes
