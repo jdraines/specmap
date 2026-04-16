@@ -17,7 +17,7 @@ from specmap.config import (
     SPEC_EXCLUDE_FILENAMES,
     CoreConfig,
 )
-from specmap.indexer.code_analyzer import CodeChange
+from specmap.indexer.code_analyzer import CodeChange, parse_patch_ranges
 from specmap.indexer.mapper import Mapper
 from specmap.llm.client import LLMClient
 
@@ -102,12 +102,16 @@ async def generate_lite(
                 continue
             text = raw.decode("utf-8", errors="replace")
             lines = text.splitlines()
+            dr = parse_patch_ranges(f.get("patch", "")) or None
+            if f["status"] == "added" and not dr:
+                dr = [(1, len(lines))]
             changes.append(CodeChange(
                 file_path=f["filename"],
                 start_line=1,
                 end_line=len(lines),
                 change_type=f["status"],
                 content=text,
+                diff_ranges=dr,
             ))
         except Exception:
             continue
@@ -190,12 +194,17 @@ async def generate_full(
             LLMClient(config), pr_title, head_branch, base_branch, pr_files
         )
 
-        # 3. Extract changed filenames (only existing files, skip removed)
+        # 3. Extract changed filenames and patches (only existing files, skip removed)
         changed_files = [
             f["filename"]
             for f in pr_files[:_MAX_CHANGED_FILES]
             if f["status"] != "removed"
         ]
+        file_patches = {
+            f["filename"]: f["patch"]
+            for f in pr_files[:_MAX_CHANGED_FILES]
+            if f["status"] != "removed" and f.get("patch")
+        }
 
         # 4. Call annotate() with timeout
         from specmap.tools.annotate import annotate
@@ -218,6 +227,7 @@ async def generate_full(
             exclude_files=exclude_files,
             concurrency=concurrency,
             config=config,
+            file_patches=file_patches if file_patches else None,
         )
 
         # 5. Read result

@@ -41,19 +41,119 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
   const [oldSource, setOldSource] = useState<string | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const pendingExpand = useRef<[number, number] | null>(null);
+  const pendingAnnotationExpansions = useRef<Array<[number, number]> | null>(null);
+  const annotationExpandDone = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const isNewFile = file.status === 'added';
   const [renderingHunks, expandRange] = useSourceExpansion(diffData.hunks, oldSource);
 
-  // Apply pending expansion after source loads
+  // Apply pending expansions after source loads
   useEffect(() => {
-    if (oldSource !== null && pendingExpand.current) {
+    if (oldSource === null) return;
+    if (pendingExpand.current) {
       const [s, e] = pendingExpand.current;
       pendingExpand.current = null;
       expandRange(s, e);
     }
+    if (pendingAnnotationExpansions.current) {
+      const exps = pendingAnnotationExpansions.current;
+      pendingAnnotationExpansions.current = null;
+      for (const [s, e] of exps) {
+        expandRange(s, e);
+      }
+    }
   });
+
+  // Auto-expand hunks so all annotation lines are visible
+  useEffect(() => {
+    if (!annotations.length || isNewFile || annotationExpandDone.current) return;
+
+    // Build set of visible new-file line numbers
+    const visibleLines = new Set<number>();
+    for (const hunk of renderingHunks) {
+      for (const change of hunk.changes) {
+        if (change.type === 'delete') continue;
+        const line = change.type === 'insert'
+          ? (change as ChangeData & { lineNumber: number }).lineNumber
+          : (change as ChangeData & { newLineNumber: number }).newLineNumber;
+        visibleLines.add(line);
+      }
+    }
+
+    // Check if any annotation has lines outside visible hunks
+    let needsExpansion = false;
+    for (const ann of annotations) {
+      for (let line = ann.start_line; line <= ann.end_line; line++) {
+        if (!visibleLines.has(line)) {
+          needsExpansion = true;
+          break;
+        }
+      }
+      if (needsExpansion) break;
+    }
+
+    if (!needsExpansion) {
+      annotationExpandDone.current = true;
+      return;
+    }
+
+    // Compute gaps between hunks: map new-file lines to old-file expansion ranges
+    const gaps: Array<{ newStart: number; newEnd: number; oldStart: number }> = [];
+    const hunks = renderingHunks;
+    if (hunks.length > 0) {
+      // Gap before first hunk
+      if (hunks[0].oldStart > 1) {
+        gaps.push({ newStart: 1, newEnd: hunks[0].newStart - 1, oldStart: 1 });
+      }
+      // Gaps between hunks
+      for (let i = 0; i < hunks.length - 1; i++) {
+        const prevNewEnd = hunks[i].newStart + hunks[i].newLines;
+        const nextNewStart = hunks[i + 1].newStart;
+        const prevOldEnd = hunks[i].oldStart + hunks[i].oldLines;
+        if (nextNewStart > prevNewEnd) {
+          gaps.push({ newStart: prevNewEnd, newEnd: nextNewStart - 1, oldStart: prevOldEnd });
+        }
+      }
+    }
+
+    // Find expansion ranges for annotation lines in gaps
+    const expansions: Array<[number, number]> = [];
+    for (const gap of gaps) {
+      const offset = gap.oldStart - gap.newStart;
+      for (const ann of annotations) {
+        if (ann.start_line <= gap.newEnd && ann.end_line >= gap.newStart) {
+          const overlapStart = Math.max(ann.start_line, gap.newStart);
+          const overlapEnd = Math.min(ann.end_line, gap.newEnd);
+          expansions.push([overlapStart + offset, overlapEnd + offset + 1]);
+        }
+      }
+    }
+
+    if (!expansions.length) {
+      annotationExpandDone.current = true;
+      return;
+    }
+
+    annotationExpandDone.current = true;
+
+    if (oldSource !== null) {
+      for (const [s, e] of expansions) {
+        expandRange(s, e);
+      }
+      return;
+    }
+
+    // Need to load source first
+    if (!fullName || !number || sourceLoading) return;
+    pendingAnnotationExpansions.current = expansions;
+    setSourceLoading(true);
+    pulls.fileSource(fullName, number, file.filename)
+      .then(({ content }) => setOldSource(content))
+      .catch(() => { pendingAnnotationExpansions.current = null; })
+      .finally(() => setSourceLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotations, renderingHunks]);
 
   const handleExpand = useCallback(
     async (start: number, end: number) => {

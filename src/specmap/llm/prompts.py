@@ -28,6 +28,11 @@ Choose appropriate granularity — group related lines under one description, or
 individual lines their own annotation when they implement distinct requirements. \
 Prefer concise, informative descriptions over verbose ones.
 
+IMPORTANT: When "Changed lines" ranges are shown for a code block, each annotation's \
+[start_line, end_line] MUST overlap at least one changed line range. Do not annotate \
+unchanged code — only annotate lines that were actually modified or added. The surrounding \
+context is provided for understanding but should not be the target of annotations.
+
 Output valid JSON matching the AnnotationResponse schema."""
 
 _SUPPLEMENT_SYSTEM = """\
@@ -51,10 +56,11 @@ def build_annotation_prompt(
     """
     code_parts = []
     for change in code_changes:
-        code_parts.append(
-            f"### File: {change['file_path']} (lines {change['start_line']}-{change['end_line']})\n"
-            f"```\n{change['content']}\n```"
-        )
+        header = f"### File: {change['file_path']} (lines {change['start_line']}-{change['end_line']})"
+        if change.get("diff_ranges"):
+            ranges_str = ", ".join(f"{s}-{e}" for s, e in change["diff_ranges"])
+            header += f"\nChanged lines: {ranges_str}"
+        code_parts.append(f"{header}\n```\n{change['content']}\n```")
     code_block = "\n\n".join(code_parts)
 
     spec_parts = []
