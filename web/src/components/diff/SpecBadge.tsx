@@ -16,6 +16,7 @@ interface SpecBadgeProps {
 export function SpecBadge({ refId: _refId, specRef }: SpecBadgeProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
+  const [placement, setPlacement] = useState<'above' | 'below'>('below');
   const badgeRef = useRef<HTMLButtonElement>(null);
   const hideTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
   const openModal = useSpecPanelStore((s) => s.openModal);
@@ -25,10 +26,12 @@ export function SpecBadge({ refId: _refId, specRef }: SpecBadgeProps) {
     hideTimeout.current = setTimeout(() => {
       if (badgeRef.current) {
         const rect = badgeRef.current.getBoundingClientRect();
-        setTooltipPos({
-          top: rect.bottom + 4,
-          left: rect.left + rect.width / 2,
-        });
+        const tooltipWidth = 288; // w-72
+        const left = Math.max(tooltipWidth / 2, Math.min(rect.left + rect.width / 2, window.innerWidth - tooltipWidth / 2));
+        const fitsBelow = rect.bottom + 4 + 200 < window.innerHeight;
+        const top = fitsBelow ? rect.bottom + 4 : rect.top - 4;
+        setPlacement(fitsBelow ? 'below' : 'above');
+        setTooltipPos({ top, left });
       }
       setShowTooltip(true);
     }, 200);
@@ -59,6 +62,7 @@ export function SpecBadge({ refId: _refId, specRef }: SpecBadgeProps) {
           heading={specRef.heading}
           excerpt={specRef.excerpt}
           position={tooltipPos}
+          placement={placement}
           onMouseEnter={keep}
           onMouseLeave={hide}
         />

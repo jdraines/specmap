@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -16,6 +19,10 @@ from fastapi.responses import JSONResponse
 from starlette.responses import StreamingResponse
 
 from specmap import __version__
+from specmap.config import SpecmapConfig, save_user_config, user_config_path, _load_toml
+from specmap.llm.client import LLMClient
+from specmap.llm.walkthrough_prompts import build_walkthrough_prompt
+from specmap.llm.walkthrough_schemas import WalkthroughResponse
 from specmap.server import auth
 from specmap.server.config import ServerConfig
 from specmap.server.db import Database
@@ -27,15 +34,18 @@ from specmap.server.forge import (
     detect_repo_full_name,
     resolve_token,
 )
+from specmap.server.generate import generate_full, generate_lite
 from specmap.server.github import GitHubProvider
+from specmap.server.gitlab import GitLabProvider
+from specmap.server.spa import mount_spa
+from specmap.state.models import SpecmapFile as SpecmapFileModel, WalkthroughFile
+from specmap.state.specmap_file import SpecmapFileManager, _ensure_gitignore
 
 logger = logging.getLogger("specmap.server")
 
 
 def _build_provider(provider_name: str, base_url: str, config: ServerConfig) -> ForgeProvider:
     if provider_name == "gitlab":
-        from specmap.server.gitlab import GitLabProvider
-
         return GitLabProvider(base_url)
     # Default: GitHub (including GHE)
     if base_url != "https://api.github.com":
@@ -49,6 +59,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         db_dir = os.path.dirname(config.database_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
+            _ensure_gitignore(Path(db_dir))
         db = Database(config.database_path)
         db.initialize()
         app.state.db = db
@@ -61,10 +72,15 @@ def create_app(config: ServerConfig) -> FastAPI:
         app.state.auth_mode = detect_auth_mode(config, provider_name)
         app.state.current_repo = detect_repo_full_name()
 
-        # PAT mode: resolve token on startup
+        # PAT mode: resolve token on startup (pass user config for forge tokens)
+        _user_cfg: SpecmapConfig | None = None
+        _upath = user_config_path()
+        if _upath.exists():
+            _user_cfg = _load_toml(_upath)
+
         app.state.forge_token: str | None = None
         if app.state.auth_mode == "pat":
-            app.state.forge_token = resolve_token(provider_name)
+            app.state.forge_token = resolve_token(provider_name, user_config=_user_cfg)
             if app.state.forge_token:
                 logger.info("PAT resolved for %s", provider_name)
             else:
@@ -181,6 +197,71 @@ def create_app(config: ServerConfig) -> FastAPI:
     def _unauthorized(msg: str):
         return HTTPError(401, msg)
 
+    # --- Annotation / Walkthrough loading helpers ---
+
+    def _is_local(request: Request, owner: str, repo: str) -> bool:
+        return request.app.state.current_repo == f"{owner}/{repo}"
+
+    def _file_mgr() -> SpecmapFileManager:
+        return SpecmapFileManager(".")
+
+    async def _load_annotations(request: Request, provider: ForgeProvider, token: str,
+                                owner: str, repo: str, branch: str, head_sha: str) -> dict:
+        """Load annotations: forge API first, local file fallback, newest wins."""
+        remote_data = None
+        sanitized = branch.replace("/", "--")
+        specmap_path = f".specmap/{sanitized}.json"
+        try:
+            content = await provider.get_file_content(
+                _http(request), token, owner, repo, specmap_path, head_sha
+            )
+            remote_data = json.loads(content)
+        except (ForgeNotFound, json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+        local_data = None
+        is_local = _is_local(request, owner, repo)
+        if is_local:
+            mgr = _file_mgr()
+            local_specmap = mgr.load(branch)
+            if local_specmap.annotations:
+                local_data = json.loads(local_specmap.model_dump_json())
+
+        if remote_data and local_data:
+            r_time = remote_data.get("updated_at", "")
+            l_time = local_data.get("updated_at", "")
+            return remote_data if r_time >= l_time else local_data
+        return remote_data or local_data
+
+    async def _load_walkthrough(request: Request, provider: ForgeProvider, token: str,
+                                owner: str, repo: str, branch: str, head_sha: str,
+                                familiarity: int, depth: str) -> dict | None:
+        """Load walkthrough: forge API first, local file fallback, newest wins."""
+        remote_data = None
+        sanitized = branch.replace("/", "--")
+        wt_path = f".specmap/{sanitized}.walkthrough.f{familiarity}.{depth}.json"
+        try:
+            content = await provider.get_file_content(
+                _http(request), token, owner, repo, wt_path, head_sha
+            )
+            remote_data = json.loads(content)
+        except (ForgeNotFound, json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+        local_data = None
+        is_local = _is_local(request, owner, repo)
+        if is_local:
+            mgr = _file_mgr()
+            local_wt = mgr.load_walkthrough(branch, familiarity, depth)
+            if local_wt:
+                local_data = json.loads(local_wt.model_dump_json())
+
+        if remote_data and local_data:
+            r_time = remote_data.get("updated_at", "")
+            l_time = local_data.get("updated_at", "")
+            return remote_data if r_time >= l_time else local_data
+        return remote_data or local_data
+
     # --- Routes ---
 
     @app.get("/healthz")
@@ -213,12 +294,24 @@ def create_app(config: ServerConfig) -> FastAPI:
         if mode == "pat":
             env_var = "GITHUB_TOKEN" if provider.name == "github" else "GITLAB_TOKEN"
             cli_cmd = "gh auth token" if provider.name == "github" else "glab auth login"
-            hint = f"Set {env_var} or run `{cli_cmd}`, then restart the server. Or enter a token below."
+            hint = (
+                f"specmap runs locally — your token is only used to call the {provider.name} API. "
+                f"Set {env_var} or run `{cli_cmd}`, then restart the server. "
+                f"Or enter a token below."
+            )
+        token_hint = ""
+        if mode == "pat":
+            if provider.name == "gitlab":
+                token_hint = "legacy PAT \u00b7 needs api scope"
+            else:
+                token_hint = "classic token \u00b7 needs repo scope"
+
         return {
             "authenticated": False,
             "auth_mode": mode,
             "provider": provider.name,
             "setup_hint": hint,
+            "token_hint": token_hint,
             "current_repo": request.app.state.current_repo,
         }
 
@@ -262,6 +355,21 @@ def create_app(config: ServerConfig) -> FastAPI:
         response = JSONResponse({"user": _user_response(user)})
         response.set_cookie(value=jwt_token, **auth.session_cookie_kwargs(config.secure))
         return response
+
+    @app.post("/api/v1/auth/save-token")
+    async def save_forge_token(request: Request):
+        """Save the current forge token to user config for persistence."""
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+
+        cfg = SpecmapConfig()
+        if provider.name == "github":
+            cfg.forge_github_token = token
+        else:
+            cfg.forge_gitlab_token = token
+        path = save_user_config(cfg)
+        return {"saved": True, "path": str(path)}
 
     @app.get("/api/v1/auth/login/{provider_name}")
     async def login(request: Request, provider_name: str):
@@ -378,7 +486,7 @@ def create_app(config: ServerConfig) -> FastAPI:
     @app.get("/api/v1/capabilities")
     async def capabilities(request: Request):
         cfg = _cfg(request)
-        has_llm = bool(cfg.llm_api_key)
+        has_llm = bool(cfg.core.api_key)
         return {"walkthrough": has_llm, "annotations": has_llm}
 
     # --- Data routes ---
@@ -614,29 +722,11 @@ def create_app(config: ServerConfig) -> FastAPI:
             author_login=p["author_login"],
         )
 
+        branch = db_pull["head_branch"]
         head_sha = db_pull["head_sha"]
 
-        cached = db.get_mapping_cache(db_pull["id"], head_sha)
-        if cached:
-            return json.loads(cached)
-
-        branch = db_pull["head_branch"]
-        sanitized = branch.replace("/", "--")
-        specmap_path = f".specmap/{sanitized}.json"
-
-        try:
-            content = await provider.get_file_content(
-                _http(request), token, owner, repo, specmap_path, head_sha
-            )
-            specmap_data = json.loads(content)
-        except ForgeNotFound:
-            specmap_data = _empty_specmap(branch, db_pull)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            specmap_data = _empty_specmap(branch, db_pull)
-
-        db.upsert_mapping_cache(db_pull["id"], head_sha, json.dumps(specmap_data))
-
-        return specmap_data
+        data = await _load_annotations(request, provider, token, owner, repo, branch, head_sha)
+        return data or _empty_specmap(branch, db_pull)
 
     async def _handle_get_spec_content(request: Request, owner: str, repo: str, number: int, spec_path: str):
         claims = _get_current_user(request)
@@ -659,7 +749,7 @@ def create_app(config: ServerConfig) -> FastAPI:
 
     async def _handle_generate_annotations(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)
-        if not cfg.llm_api_key:
+        if not cfg.core.api_key:
             raise HTTPError(503, "LLM not configured. Set SPECMAP_API_KEY.")
 
         claims = _get_current_user(request)
@@ -681,7 +771,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         if req_timeout is not None:
             annotate_timeout = max(30, min(1800, int(req_timeout)))
         else:
-            annotate_timeout = cfg.annotate_timeout
+            annotate_timeout = cfg.core.annotate_timeout
 
         # Fetch repo + PR
         r = await provider.get_repo(_http(request), token, owner, repo)
@@ -706,22 +796,21 @@ def create_app(config: ServerConfig) -> FastAPI:
         )
         head_sha = db_pull["head_sha"]
 
-        # Check cache — return plain JSON (not SSE)
-        if not force and not resume:
-            cached = db.get_mapping_cache(db_pull["id"], head_sha)
-            if cached:
-                cached_data = json.loads(cached)
-                if cached_data.get("annotations") and not cached_data.get("partial"):
-                    return cached_data
+        branch = db_pull["head_branch"]
 
-        # Resume support: load cached partial result and extract already-annotated files
+        # Check existing annotations — return plain JSON (not SSE)
+        if not force and not resume:
+            existing = await _load_annotations(request, provider, token, owner, repo, branch, head_sha)
+            if existing and existing.get("annotations") and not existing.get("partial"):
+                return existing
+
+        # Resume support: load partial result from file and extract already-annotated files
         exclude_files: set[str] | None = None
         cached_annotations: list[dict] = []
         if resume:
-            cached = db.get_mapping_cache(db_pull["id"], head_sha)
-            if cached:
-                cached_data = json.loads(cached)
-                cached_annotations = cached_data.get("annotations", [])
+            existing = await _load_annotations(request, provider, token, owner, repo, branch, head_sha)
+            if existing:
+                cached_annotations = existing.get("annotations", [])
                 if cached_annotations:
                     exclude_files = {ann["file"] for ann in cached_annotations}
 
@@ -739,8 +828,6 @@ def create_app(config: ServerConfig) -> FastAPI:
 
             yield _sse("progress", {"phase": "starting", "detail": "Starting annotation generation..."})
 
-            from specmap.server.generate import generate_full, generate_lite
-
             async def run_generate():
                 try:
                     if mode == "lite":
@@ -748,7 +835,7 @@ def create_app(config: ServerConfig) -> FastAPI:
                             provider, _http(request), token,
                             owner, repo, pr_files,
                             head_sha, db_pull["head_branch"], db_pull["base_branch"],
-                            cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
+                            config=cfg.core,
                             annotate_timeout=annotate_timeout,
                             on_progress=on_progress,
                             exclude_files=exclude_files,
@@ -759,7 +846,7 @@ def create_app(config: ServerConfig) -> FastAPI:
                             provider, _http(request), token,
                             owner, repo, pr_files,
                             head_sha, db_pull["head_branch"], db_pull["base_branch"],
-                            cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
+                            config=cfg.core,
                             pr_title=db_pull["title"],
                             annotate_timeout=annotate_timeout,
                             on_progress=on_progress,
@@ -790,8 +877,12 @@ def create_app(config: ServerConfig) -> FastAPI:
             while True:
                 event_type, data = await progress_queue.get()
                 if event_type == "complete":
-                    # Cache and yield final result
-                    db.upsert_mapping_cache(db_pull["id"], head_sha, json.dumps(data))
+                    # Write to local file if running in the repo
+                    if _is_local(request, owner, repo):
+                        sf = SpecmapFileModel.model_validate(data)
+                        sf.branch = branch
+                        sf.updated_by = "server:generate"
+                        _file_mgr().save(sf)
                     yield _sse("complete", data)
                     break
                 elif event_type == "error":
@@ -810,15 +901,17 @@ def create_app(config: ServerConfig) -> FastAPI:
 
     async def _handle_clear_cache(request: Request, owner: str, repo: str, number: int):
         claims = _get_current_user(request)
-        _get_forge_token(request, claims)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
         db = _db(request)
 
-        db_repo = db.get_repo_by_full_name(owner, repo)
-        if db_repo:
-            db_pull = db.get_pull(db_repo["id"], number)
-            if db_pull:
-                db.delete_mapping_cache(db_pull["id"])
-                db.delete_walkthrough_cache(db_pull["id"])
+        # Get the branch name for this PR
+        p = await provider.get_pull(_http(request), token, owner, repo, number)
+        branch = p["head_branch"]
+
+        # Delete local files if running in the repo
+        if _is_local(request, owner, repo):
+            _file_mgr().delete_files(branch)
 
         return {"status": "cleared"}
 
@@ -826,7 +919,7 @@ def create_app(config: ServerConfig) -> FastAPI:
 
     async def _handle_generate_walkthrough(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)
-        if not cfg.llm_api_key:
+        if not cfg.core.api_key:
             raise HTTPError(503, "LLM not configured. Set SPECMAP_API_KEY.")
 
         claims = _get_current_user(request)
@@ -864,29 +957,19 @@ def create_app(config: ServerConfig) -> FastAPI:
             head_sha=p["head_sha"],
             author_login=p["author_login"],
         )
+        branch = db_pull["head_branch"]
         head_sha = db_pull["head_sha"]
 
-        # Check cache
-        cached = db.get_walkthrough_cache(db_pull["id"], head_sha, familiarity, depth)
-        if cached:
-            return json.loads(cached)
+        # Check existing walkthrough (file is already keyed by familiarity+depth)
+        existing_wt = await _load_walkthrough(request, provider, token, owner, repo,
+                                              branch, head_sha, familiarity, depth)
+        if existing_wt and existing_wt.get("head_sha") == head_sha:
+            return existing_wt
 
-        # Get annotations
-        ann_cached = db.get_mapping_cache(db_pull["id"], head_sha)
-        if ann_cached:
-            specmap_data = json.loads(ann_cached)
-        else:
-            branch = db_pull["head_branch"]
-            sanitized = branch.replace("/", "--")
-            specmap_path = f".specmap/{sanitized}.json"
-            try:
-                content = await provider.get_file_content(
-                    _http(request), token, owner, repo, specmap_path, head_sha
-                )
-                specmap_data = json.loads(content)
-            except (ForgeNotFound, json.JSONDecodeError, UnicodeDecodeError):
-                specmap_data = _empty_specmap(branch, db_pull)
-            db.upsert_mapping_cache(db_pull["id"], head_sha, json.dumps(specmap_data))
+        # Get annotations (forge → local file)
+        specmap_data = await _load_annotations(request, provider, token, owner, repo, branch, head_sha)
+        if not specmap_data:
+            specmap_data = _empty_specmap(branch, db_pull)
 
         annotations_list = specmap_data.get("annotations", [])
         if not annotations_list:
@@ -895,14 +978,12 @@ def create_app(config: ServerConfig) -> FastAPI:
                 pr_files_for_gen = await provider.list_pull_files(
                     _http(request), token, owner, repo, number
                 )
-                from specmap.server.generate import generate_full, generate_lite
-
                 try:
                     specmap_data = await generate_full(
                         provider, _http(request), token,
                         owner, repo, pr_files_for_gen,
                         head_sha, db_pull["head_branch"], db_pull["base_branch"],
-                        cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
+                        config=cfg.core,
                         pr_title=db_pull["title"],
                     )
                 except Exception:
@@ -911,11 +992,14 @@ def create_app(config: ServerConfig) -> FastAPI:
                         provider, _http(request), token,
                         owner, repo, pr_files_for_gen,
                         head_sha, db_pull["head_branch"], db_pull["base_branch"],
-                        cfg.llm_model, cfg.llm_api_key, cfg.llm_api_base,
+                        config=cfg.core,
                     )
-                db.upsert_mapping_cache(
-                    db_pull["id"], head_sha, json.dumps(specmap_data)
-                )
+                # Write generated annotations to local file
+                if _is_local(request, owner, repo):
+                    sf = SpecmapFileModel.model_validate(specmap_data)
+                    sf.branch = branch
+                    sf.updated_by = "server:generate"
+                    _file_mgr().save(sf)
                 annotations_list = specmap_data.get("annotations", [])
             except Exception:
                 pass
@@ -945,11 +1029,6 @@ def create_app(config: ServerConfig) -> FastAPI:
                 pass
 
         # Build prompt and call LLM
-        from specmap.config import SpecmapConfig as CoreConfig
-        from specmap.llm.client import LLMClient
-        from specmap.llm.walkthrough_prompts import build_walkthrough_prompt
-        from specmap.llm.walkthrough_schemas import WalkthroughResponse
-
         messages = build_walkthrough_prompt(
             pr_title=db_pull["title"],
             head_branch=db_pull["head_branch"],
@@ -961,17 +1040,10 @@ def create_app(config: ServerConfig) -> FastAPI:
             depth=depth,
         )
 
-        llm_config = CoreConfig(
-            model=cfg.llm_model,
-            api_key=cfg.llm_api_key,
-            api_base=cfg.llm_api_base or None,
-        )
-        llm_client = LLMClient(llm_config)
+        llm_client = LLMClient(cfg.core)
         result = await llm_client.complete(messages, response_format=WalkthroughResponse)
 
         # Build response
-        import datetime
-
         steps = []
         for step in result.steps:
             refs = []
@@ -994,28 +1066,30 @@ def create_app(config: ServerConfig) -> FastAPI:
             })
 
         walkthrough_data = {
+            "version": 1,
+            "branch": branch,
             "summary": result.summary,
             "steps": steps,
             "familiarity": familiarity,
             "depth": depth,
             "head_sha": head_sha,
-            "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%S.%fZ"
             ),
+            "updated_by": "server:generate",
         }
 
-        # Cache and return
-        db.upsert_walkthrough_cache(
-            db_pull["id"], head_sha, familiarity, depth, json.dumps(walkthrough_data)
-        )
+        # Write to local file if running in the repo
+        if _is_local(request, owner, repo):
+            wf = WalkthroughFile.model_validate(walkthrough_data)
+            _file_mgr().save_walkthrough(wf)
+
         return walkthrough_data
 
     # --- Catch-all repo route dispatcher ---
     # Supports nested namespaces (e.g. group/subgroup/project/pulls/42)
 
-    import re as _re
-
-    _PULLS_RE = _re.compile(
+    _PULLS_RE = re.compile(
         r"^(?P<full_name>.+)/pulls"
         r"(?:/(?P<number>\d+)(?:/(?P<action>.+))?)?$"
     )
@@ -1149,8 +1223,6 @@ def create_app(config: ServerConfig) -> FastAPI:
 
     # Mount SPA if static_dir is set (must be last)
     if config.static_dir:
-        from specmap.server.spa import mount_spa
-
         mount_spa(app, config.static_dir)
 
     return app

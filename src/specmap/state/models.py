@@ -52,3 +52,29 @@ class SpecmapFile(BaseModel):
     annotations: list[Annotation] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(default_factory=list)
     file_hashes: dict[str, str] = Field(default_factory=dict)
+
+
+class WalkthroughStep(BaseModel):
+    """A single step in a walkthrough."""
+
+    step_number: int
+    title: str
+    narrative: str
+    file: str = ""
+    start_line: int = 0
+    end_line: int = 0
+    refs: list[dict] = Field(default_factory=list)
+
+
+class WalkthroughFile(BaseModel):
+    """The .specmap/{branch}.walkthrough.json file."""
+
+    version: int = 1
+    branch: str = ""
+    head_sha: str = ""
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_by: str = "server:generate"
+    familiarity: int = 2
+    depth: str = "quick"
+    summary: str = ""
+    steps: list[WalkthroughStep] = Field(default_factory=list)

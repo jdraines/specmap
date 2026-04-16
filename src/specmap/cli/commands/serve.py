@@ -64,8 +64,15 @@ def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
     Returns (api_key, model). Either or both may be None.
     Skipped entirely if SPECMAP_API_KEY or SPECMAP_SKIP_API_KEY_CHECK is set.
     """
-    if os.environ.get("SPECMAP_API_KEY") or os.environ.get("SPECMAP_SKIP_API_KEY_CHECK"):
-        return os.environ.get("SPECMAP_API_KEY") or None, None
+    if os.environ.get("SPECMAP_SKIP_API_KEY_CHECK"):
+        return None, None
+
+    # Check merged config (includes env vars, user TOML, repo TOML)
+    from specmap.config import CoreConfig
+
+    core = CoreConfig.load()
+    if core.api_key:
+        return core.api_key, None
 
     import questionary
     from questionary import Style
@@ -79,6 +86,7 @@ def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
     console.print(
         "\n[bold]SPECMAP_API_KEY[/bold] is not set. "
         "An API key enables AI-powered features (annotation generation, guided walkthroughs).\n"
+        "[dim]specmap runs locally — your key is stored on this machine and used only to call your chosen LLM provider.[/dim]\n"
     )
 
     choice = questionary.select(
@@ -133,7 +141,20 @@ def _maybe_prompt_api_key() -> tuple[str | None, str | None]:
     if model is None:  # Ctrl-C
         model = default_model
 
-    return api_key, model.strip() or default_model
+    # Offer to save to user config
+    from specmap.config import SpecmapConfig, save_user_config, user_config_path
+
+    final_model = model.strip() or default_model
+    save = questionary.confirm(
+        f"Save to {user_config_path()}?",
+        default=True,
+    ).ask()
+    if save:
+        new_cfg = SpecmapConfig(api_key=api_key, model=final_model)
+        path = save_user_config(new_cfg)
+        console.print(f"[green]Saved to {path}[/green]")
+
+    return api_key, final_model
 
 
 @app.command()

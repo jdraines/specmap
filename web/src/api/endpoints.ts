@@ -22,6 +22,8 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify({ token }),
     }),
+  saveToken: () =>
+    apiFetch<{ saved: boolean; path: string }>('/api/v1/auth/save-token', { method: 'POST' }),
 };
 
 export const repos = {

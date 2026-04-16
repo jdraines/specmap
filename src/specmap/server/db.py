@@ -21,6 +21,15 @@ class Database:
         self._migrate()
         schema = resources.files("specmap.server").joinpath("schema.sql").read_text()
         self.conn.executescript(schema)
+        self._drop_cache_tables()
+
+    def _drop_cache_tables(self):
+        """Remove legacy cache tables — annotations/walkthroughs now live in .specmap/ files."""
+        for table in ("mapping_cache", "walkthrough_cache"):
+            self.conn.execute(f"DROP TABLE IF EXISTS {table}")
+        self.conn.execute("DROP INDEX IF EXISTS idx_mapping_cache_pr_sha")
+        self.conn.execute("DROP INDEX IF EXISTS idx_walkthrough_cache_key")
+        self.conn.commit()
 
     def close(self):
         self.conn.close()
@@ -194,63 +203,3 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
-    # --- Mapping Cache ---
-
-    def get_mapping_cache(self, pull_request_id: int, head_sha: str) -> str | None:
-        row = self.conn.execute(
-            "SELECT specmap_json FROM mapping_cache WHERE pull_request_id = ? AND head_sha = ?",
-            (pull_request_id, head_sha),
-        ).fetchone()
-        return row["specmap_json"] if row else None
-
-    def upsert_mapping_cache(self, pull_request_id: int, head_sha: str, specmap_json: str):
-        self.conn.execute(
-            """INSERT INTO mapping_cache (pull_request_id, head_sha, specmap_json)
-               VALUES (?, ?, ?)
-               ON CONFLICT (pull_request_id, head_sha) DO UPDATE SET
-                 specmap_json=excluded.specmap_json""",
-            (pull_request_id, head_sha, specmap_json),
-        )
-        self.conn.commit()
-
-    def delete_mapping_cache(self, pull_request_id: int):
-        self.conn.execute(
-            "DELETE FROM mapping_cache WHERE pull_request_id = ?", (pull_request_id,)
-        )
-        self.conn.commit()
-
-    def delete_walkthrough_cache(self, pull_request_id: int):
-        self.conn.execute(
-            "DELETE FROM walkthrough_cache WHERE pull_request_id = ?", (pull_request_id,)
-        )
-        self.conn.commit()
-
-    # --- Walkthrough Cache ---
-
-    def get_walkthrough_cache(
-        self, pull_request_id: int, head_sha: str, familiarity: int, depth: str
-    ) -> str | None:
-        row = self.conn.execute(
-            """SELECT walkthrough_json FROM walkthrough_cache
-               WHERE pull_request_id = ? AND head_sha = ? AND familiarity = ? AND depth = ?""",
-            (pull_request_id, head_sha, familiarity, depth),
-        ).fetchone()
-        return row["walkthrough_json"] if row else None
-
-    def upsert_walkthrough_cache(
-        self,
-        pull_request_id: int,
-        head_sha: str,
-        familiarity: int,
-        depth: str,
-        walkthrough_json: str,
-    ):
-        self.conn.execute(
-            """INSERT INTO walkthrough_cache
-                 (pull_request_id, head_sha, familiarity, depth, walkthrough_json)
-               VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT (pull_request_id, head_sha, familiarity, depth) DO UPDATE SET
-                 walkthrough_json=excluded.walkthrough_json""",
-            (pull_request_id, head_sha, familiarity, depth, walkthrough_json),
-        )
-        self.conn.commit()

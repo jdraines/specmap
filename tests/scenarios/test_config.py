@@ -15,7 +15,7 @@ from harness.repo import GitRepo
 
 from specmap.tools.annotate import annotate
 from specmap.llm.schemas import AnnotationResponse
-from specmap.config import SpecmapConfig
+from specmap.config import CoreConfig
 
 
 # ── F21: Custom spec patterns ────────────────────────────────────────────────
@@ -122,5 +122,5 @@ def test_env_vars_override_config(scenario_repo: GitRepo, monkeypatch):
     # Env var overrides
     monkeypatch.setenv("SPECMAP_MODEL", "claude-opus-4-6")
 
-    loaded = SpecmapConfig.load(str(repo.path))
+    loaded = CoreConfig.load(str(repo.path))
     assert loaded.model == "claude-opus-4-6"

@@ -116,7 +116,7 @@ class ForgeProvider(Protocol):
         ...
 
 
-def resolve_token(provider_name: str) -> str | None:
+def resolve_token(provider_name: str, user_config: object | None = None) -> str | None:
     """Resolve a PAT for the given provider from env vars or CLI tools.
 
     Checks in order:
@@ -128,6 +128,11 @@ def resolve_token(provider_name: str) -> str | None:
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
         if token:
             return token
+        # Check user config
+        if user_config is not None:
+            token = getattr(user_config, "forge_github_token", None)
+            if token:
+                return token
         # Fallback: gh CLI
         try:
             result = subprocess.run(
@@ -144,6 +149,11 @@ def resolve_token(provider_name: str) -> str | None:
         token = os.environ.get("GITLAB_TOKEN")
         if token:
             return token
+        # Check user config
+        if user_config is not None:
+            token = getattr(user_config, "forge_gitlab_token", None)
+            if token:
+                return token
         # Fallback: glab CLI — try multiple methods
         for cmd in [
             ["glab", "config", "get", "token"],
