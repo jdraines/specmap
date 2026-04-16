@@ -7,7 +7,7 @@ import subprocess
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from specmap.config import SPEC_EXCLUDE_DIRS, SPEC_EXCLUDE_FILENAMES, SpecmapConfig
+from specmap.config import SPEC_EXCLUDE_DIRS, SPEC_EXCLUDE_FILENAMES, CoreConfig
 from specmap.indexer.code_analyzer import CodeAnalyzer
 from specmap.indexer.diff_optimizer import (
     classify_annotations,
@@ -33,6 +33,7 @@ async def annotate(
     deadline: float | None = None,
     exclude_files: set[str] | None = None,
     concurrency: int = 1,
+    config: CoreConfig | None = None,
 ) -> dict:
     """Generate annotations for code changes with spec references.
 
@@ -47,7 +48,7 @@ async def annotate(
     Returns:
         Summary dict with annotations created and coverage info
     """
-    config = SpecmapConfig.load(repo_root)
+    config = config or CoreConfig.load(repo_root)
     file_mgr = SpecmapFileManager(repo_root)
     analyzer = CodeAnalyzer()
 
@@ -193,7 +194,7 @@ async def annotate(
 
 async def _incremental_annotate(
     repo_root: str,
-    config: SpecmapConfig,
+    config: CoreConfig,
     specmap,
     analyzer: CodeAnalyzer,
     spec_contents: dict[str, str],
@@ -233,7 +234,8 @@ async def _incremental_annotate(
 
     # Further filter regenerate list using code_hash — if the annotation's
     # code region hash still matches current content, demote to keep
-    classified = _filter_by_code_hash(repo_root, classified)
+    # (but never demote annotations reclassified for spec changes)
+    classified = _filter_by_code_hash(repo_root, classified, changed_specs or set())
 
     # Shift non-overlapping annotations mechanically
     shifted = shift_annotations(classified.shift, file_hunks)
@@ -337,7 +339,7 @@ async def _incremental_annotate(
 
 async def _working_tree_annotate(
     repo_root: str,
-    config: SpecmapConfig,
+    config: CoreConfig,
     specmap,
     analyzer: CodeAnalyzer,
     spec_contents: dict[str, str],
@@ -625,20 +627,28 @@ def _backfill_code_hashes(repo_root: str, annotations: list[Annotation]) -> None
 def _filter_by_code_hash(
     repo_root: str,
     classified,
+    changed_specs: set[str] | None = None,
 ):
     """Demote regenerate→keep for annotations whose code_hash still matches.
 
     If an annotation was classified as regenerate because it overlaps a hunk,
     but the actual code at [start_line:end_line] hasn't changed (hash matches),
     it can safely be kept.
+
+    Annotations reclassified for spec changes are never demoted — their code
+    may be unchanged but the spec content they cite has changed.
     """
-    from specmap.indexer.diff_optimizer import ClassifiedAnnotations
+    from specmap.indexer.diff_optimizer import ClassifiedAnnotations, _cites_any_spec
 
     file_content_cache: dict[str, str | None] = {}
     still_regenerate: list[Annotation] = []
     demoted_to_keep: list[Annotation] = []
 
     for ann in classified.regenerate:
+        # Never demote annotations that cite changed specs
+        if changed_specs and _cites_any_spec(ann, changed_specs):
+            still_regenerate.append(ann)
+            continue
         if not ann.code_hash:
             still_regenerate.append(ann)
             continue
@@ -761,7 +771,7 @@ def _git_show_file(repo_root: str, commit: str, file_path: str) -> str | None:
     return None
 
 
-def _discover_spec_files(repo_root: str, config: SpecmapConfig) -> list[str]:
+def _discover_spec_files(repo_root: str, config: CoreConfig) -> list[str]:
     """Scan for spec files matching patterns, excluding common non-spec patterns."""
     found: list[str] = []
     root = Path(repo_root)

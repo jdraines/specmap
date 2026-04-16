@@ -88,6 +88,7 @@ export interface AuthStatus {
   provider: string;
   user?: User;
   setup_hint?: string;
+  token_hint?: string;
   current_repo?: string;
 }
 

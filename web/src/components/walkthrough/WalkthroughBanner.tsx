@@ -24,6 +24,7 @@ const depthOptions = [
 export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: WalkthroughBannerProps) {
   const {
     walkthrough,
+    cache,
     active,
     loading,
     error,
@@ -52,10 +53,15 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
           : 'border-[var(--wt-border)] bg-gradient-to-r from-[var(--wt-gradient-from)] to-[var(--wt-gradient-to)]'
       }`}
     >
-      {walkthrough ? (
+      {walkthrough ? (() => {
+        const selectedMatchesLoaded = familiarity === walkthrough.familiarity && depth === walkthrough.depth;
+        const cacheKey = `f${familiarity}.${depth}`;
+        const hasCachedVariant = cacheKey in cache;
+        const showGenerate = !selectedMatchesLoaded && !hasCachedVariant;
+        return (
         <>
           <p className="text-sm text-[var(--text-primary)] mb-3">{renderTextWithBold(walkthrough.summary, 'summary')}</p>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-3">
             <button
               onClick={start}
               className="px-3 py-1.5 text-xs font-semibold bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90"
@@ -66,8 +72,60 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
               {familiarityOptions.find((o) => o.value === walkthrough.familiarity)?.label} · {walkthrough.depth}
             </span>
           </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-1">
+              <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">familiarity:</span>
+              {familiarityOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setFamiliarity(opt.value)}
+                  className={`px-2 py-1 text-xs font-medium border cursor-pointer ${
+                    familiarity === opt.value
+                      ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                      : 'bg-[var(--surface-1)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--text-muted)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1">
+              <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">depth:</span>
+              {depthOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setDepth(opt.value)}
+                  className={`px-2 py-1 text-xs font-medium border cursor-pointer ${
+                    depth === opt.value
+                      ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                      : 'bg-[var(--surface-1)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--text-muted)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {showGenerate && (
+              <button
+                onClick={() => generate(fullName, prNumber)}
+                disabled={loading}
+                className="px-3 py-1.5 text-xs font-semibold bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Generating...' : 'Generate Walkthrough'}
+              </button>
+            )}
+            {loading && (
+              <span className="text-xs text-[var(--text-muted)]">
+                <Spinner /> {elapsed}
+              </span>
+            )}
+          </div>
         </>
-      ) : (
+        );
+      })() : (
         <>
           <p className="text-sm font-medium text-[var(--text-secondary)] mb-3">
             Get a guided walkthrough of this PR tailored to your familiarity with the codebase.

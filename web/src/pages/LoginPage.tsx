@@ -22,6 +22,8 @@ export function LoginPage() {
   const [tokenInput, setTokenInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [savePrompt, setSavePrompt] = useState(false);
+  const [savePath, setSavePath] = useState('');
   const { fetchUser } = useAuthStore();
 
   useEffect(() => {
@@ -52,12 +54,28 @@ export function LoginPage() {
     setError('');
     try {
       await auth.submitToken(tokenInput.trim());
-      await fetchUser();
+      setSavePrompt(true);
     } catch (err) {
       setError(String(err));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSaveToken = async () => {
+    try {
+      const result = await auth.saveToken();
+      setSavePath(result.path);
+      setSavePrompt(false);
+      setTimeout(() => fetchUser(), 1500);
+    } catch {
+      await fetchUser();
+    }
+  };
+
+  const handleSkipSave = async () => {
+    setSavePrompt(false);
+    await fetchUser();
   };
 
   return (
@@ -72,7 +90,31 @@ export function LoginPage() {
           detected forge: <span className="text-[var(--text-secondary)]">{providerLabel}</span>
         </p>
 
-        {status?.auth_mode === 'oauth' ? (
+        {savePath ? (
+          <p className="text-xs text-[var(--text-muted)] font-mono">
+            saved to {savePath}
+          </p>
+        ) : savePrompt ? (
+          <div className="text-left">
+            <p className="text-xs text-[var(--text-muted)] mb-3">
+              Save token for future sessions?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveToken}
+                className="flex-1 bg-[var(--text-primary)] text-[var(--surface-0)] px-4 py-1.5 text-sm hover:opacity-90 cursor-pointer border-0"
+              >
+                yes
+              </button>
+              <button
+                onClick={handleSkipSave}
+                className="flex-1 bg-[var(--surface-0)] text-[var(--text-secondary)] border border-[var(--border)] px-4 py-1.5 text-sm hover:opacity-90 cursor-pointer"
+              >
+                no
+              </button>
+            </div>
+          </div>
+        ) : status?.auth_mode === 'oauth' ? (
           <a
             href={`/api/v1/auth/login/${provider}`}
             className="inline-flex items-center gap-2 bg-[var(--text-primary)] text-[var(--surface-0)] px-6 py-2 text-sm hover:opacity-90 no-underline"
@@ -89,6 +131,11 @@ export function LoginPage() {
               <label className="block text-xs text-[var(--text-muted)] mb-1">
                 personal access token
               </label>
+              {status?.token_hint && (
+                <p className="text-xs text-[var(--text-muted)] mb-2 font-mono opacity-70">
+                  {status.token_hint}
+                </p>
+              )}
               <input
                 type="password"
                 value={tokenInput}
@@ -96,6 +143,9 @@ export function LoginPage() {
                 placeholder={provider === 'gitlab' ? 'glpat-...' : 'ghp_...'}
                 className="w-full px-3 py-1.5 text-sm bg-[var(--surface-0)] border border-[var(--border)] text-[var(--text-primary)] font-mono mb-3 outline-none focus:border-[var(--accent)]"
               />
+              <p className="text-xs text-[var(--text-muted)] mb-3">
+                runs locally &middot; tokens are only sent to {providerLabel}
+              </p>
               <button
                 type="submit"
                 disabled={submitting || !tokenInput.trim()}

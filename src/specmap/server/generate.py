@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from specmap.config import (
     SPEC_EXCLUDE_DIRS,
     SPEC_EXCLUDE_FILENAMES,
-    SpecmapConfig,
+    CoreConfig,
 )
 from specmap.indexer.code_analyzer import CodeChange
 from specmap.indexer.mapper import Mapper
@@ -41,9 +41,7 @@ async def generate_lite(
     head_sha: str,
     head_branch: str,
     base_branch: str,
-    llm_model: str,
-    llm_api_key: str,
-    llm_api_base: str,
+    config: CoreConfig,
     annotate_timeout: int = _ANNOTATE_TIMEOUT,
     on_progress: Callable[[dict], Awaitable[None]] | None = None,
     exclude_files: set[str] | None = None,
@@ -129,11 +127,6 @@ async def generate_lite(
         if on_progress:
             await on_progress({"phase": "annotating", "batch": batch, "total_batches": total})
 
-    config = SpecmapConfig(
-        model=llm_model,
-        api_key=llm_api_key,
-        api_base=llm_api_base or None,
-    )
     llm_client = LLMClient(config)
     mapper = Mapper(llm_client, repo_root="")
     deadline = time.monotonic() + annotate_timeout
@@ -169,9 +162,7 @@ async def generate_full(
     head_sha: str,
     head_branch: str,
     base_branch: str,
-    llm_model: str,
-    llm_api_key: str,
-    llm_api_base: str,
+    config: CoreConfig,
     pr_title: str = "",
     annotate_timeout: int = _ANNOTATE_TIMEOUT,
     on_progress: Callable[[dict], Awaitable[None]] | None = None,
@@ -195,11 +186,6 @@ async def generate_full(
         # 2. LLM context pre-pass
         if on_progress:
             await on_progress({"phase": "context", "detail": "Analyzing PR context..."})
-        config = SpecmapConfig(
-            model=llm_model,
-            api_key=llm_api_key,
-            api_base=llm_api_base or None,
-        )
         context = await _generate_context(
             LLMClient(config), pr_title, head_branch, base_branch, pr_files
         )
@@ -221,38 +207,18 @@ async def generate_full(
             if on_progress:
                 await on_progress({"phase": "annotating", "batch": batch, "total_batches": total})
 
-        # Set env vars so SpecmapConfig.load() inside annotate() picks up LLM config
-        import os
-        env_backup = {}
-        env_vars = {
-            "SPECMAP_MODEL": llm_model,
-            "SPECMAP_API_KEY": llm_api_key,
-        }
-        if llm_api_base:
-            env_vars["SPECMAP_API_BASE"] = llm_api_base
-
-        for k, v in env_vars.items():
-            env_backup[k] = os.environ.get(k)
-            os.environ[k] = v
-
-        try:
-            deadline = time.monotonic() + annotate_timeout
-            ann_result = await annotate(
-                repo_root=tmpdir,
-                code_changes=changed_files if changed_files else None,
-                branch=head_branch,
-                context=context,
-                on_progress=_batch_progress,
-                deadline=deadline,
-                exclude_files=exclude_files,
-                concurrency=concurrency,
-            )
-        finally:
-            for k, v in env_backup.items():
-                if v is None:
-                    os.environ.pop(k, None)
-                else:
-                    os.environ[k] = v
+        deadline = time.monotonic() + annotate_timeout
+        ann_result = await annotate(
+            repo_root=tmpdir,
+            code_changes=changed_files if changed_files else None,
+            branch=head_branch,
+            context=context,
+            on_progress=_batch_progress,
+            deadline=deadline,
+            exclude_files=exclude_files,
+            concurrency=concurrency,
+            config=config,
+        )
 
         # 5. Read result
         from specmap.state.specmap_file import SpecmapFileManager

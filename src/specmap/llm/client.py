@@ -10,13 +10,13 @@ from typing import Any
 import litellm
 from pydantic import BaseModel
 
-from specmap.config import SpecmapConfig
+from specmap.config import CoreConfig
 
 
 class LLMClient:
     """LLM client wrapping litellm with retry and token tracking."""
 
-    def __init__(self, config: SpecmapConfig):
+    def __init__(self, config: CoreConfig):
         self.model = config.model
         self.api_key = config.api_key
         self.api_base = config.api_base

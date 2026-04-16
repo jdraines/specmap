@@ -6,6 +6,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 
+from specmap.config import CoreConfig
 from specmap.server.auth import generate_secret
 
 logger = logging.getLogger("specmap.server")
@@ -13,17 +14,14 @@ logger = logging.getLogger("specmap.server")
 
 @dataclass
 class ServerConfig:
+    core: CoreConfig
     session_secret: str
     encryption_key: str
-    # OAuth (optional — only needed for OAuth mode)
+    # OAuth (optional)
     github_client_id: str = ""
     github_client_secret: str = ""
     gitlab_client_id: str = ""
     gitlab_client_secret: str = ""
-    # LLM (optional — enables walkthrough generation)
-    llm_model: str = ""
-    llm_api_key: str = ""
-    llm_api_base: str = ""
     # Server
     base_url: str = ""
     cors_origin: str = ""
@@ -32,7 +30,6 @@ class ServerConfig:
     port: int = 8080
     host: str = "127.0.0.1"
     static_dir: str = ""
-    annotate_timeout: int = 120
     # Derived
     secure: bool = field(init=False)
 
@@ -47,6 +44,8 @@ class ServerConfig:
     def from_env(cls, **overrides) -> ServerConfig:
         def opt(key: str, default: str = "") -> str:
             return overrides.get(key.lower()) or os.environ.get(key, default)
+
+        core = CoreConfig.load()
 
         # Auto-generate secrets for local dev convenience
         session_secret = opt("SESSION_SECRET")
@@ -63,14 +62,16 @@ class ServerConfig:
         if len(encryption_key) != 64:
             raise ValueError("ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)")
 
-        port = int(opt("PORT", "8080"))
+        port_str = opt("PORT")
+        port = int(port_str) if port_str else 8080
+
+        host = opt("HOST", "127.0.0.1")
+        database_path = opt("DATABASE_PATH", ".specmap/specmap.db")
 
         return cls(
+            core=core,
             session_secret=session_secret,
             encryption_key=encryption_key,
-            llm_model=opt("SPECMAP_MODEL", "gpt-4o-mini"),
-            llm_api_key=opt("SPECMAP_API_KEY"),
-            llm_api_base=opt("SPECMAP_API_BASE"),
             github_client_id=opt("GITHUB_CLIENT_ID"),
             github_client_secret=opt("GITHUB_CLIENT_SECRET"),
             gitlab_client_id=opt("GITLAB_CLIENT_ID"),
@@ -78,9 +79,8 @@ class ServerConfig:
             base_url=opt("BASE_URL"),
             cors_origin=opt("CORS_ORIGIN"),
             frontend_url=opt("FRONTEND_URL"),
-            database_path=opt("DATABASE_PATH", ".specmap/specmap.db"),
+            database_path=database_path,
             port=port,
-            host=opt("HOST", "127.0.0.1"),
+            host=host,
             static_dir=opt("STATIC_DIR"),
-            annotate_timeout=int(opt("SPECMAP_ANNOTATE_TIMEOUT", "120")),
         )

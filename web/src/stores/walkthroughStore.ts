@@ -2,8 +2,13 @@ import { create } from 'zustand';
 import type { Walkthrough } from '../api/types';
 import { walkthrough as walkthroughApi, capabilities } from '../api/endpoints';
 
+function walkthroughKey(f: number, d: string): string {
+  return `f${f}.${d}`;
+}
+
 interface WalkthroughState {
   walkthrough: Walkthrough | null;
+  cache: Record<string, Walkthrough>;
   active: boolean;
   currentStep: number; // 0-indexed
   loading: boolean;
@@ -37,6 +42,7 @@ function loadStorage<T>(key: string, fallback: T): T {
 
 export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   walkthrough: null,
+  cache: {},
   active: false,
   currentStep: 0,
   loading: false,
@@ -48,12 +54,16 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
 
   setFamiliarity: (f) => {
     localStorage.setItem('specmap-wt-familiarity', JSON.stringify(f));
-    set({ familiarity: f });
+    const { cache, depth } = get();
+    const cached = cache[walkthroughKey(f, depth)];
+    set({ familiarity: f, ...(cached ? { walkthrough: cached, currentStep: 0 } : {}) });
   },
 
   setDepth: (d) => {
     localStorage.setItem('specmap-wt-depth', JSON.stringify(d));
-    set({ depth: d });
+    const { cache, familiarity } = get();
+    const cached = cache[walkthroughKey(familiarity, d)];
+    set({ depth: d, ...(cached ? { walkthrough: cached, currentStep: 0 } : {}) });
   },
 
   setTimeout: (t) => {
@@ -62,11 +72,24 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   },
 
   generate: async (fullName, number) => {
-    const { familiarity, depth, timeout } = get();
+    const { familiarity, depth, timeout, cache } = get();
+    const key = walkthroughKey(familiarity, depth);
+
+    // Return cached variant if head_sha matches (instant switch)
+    const cached = cache[key];
+    if (cached) {
+      // We still call the API to let the server check staleness, but
+      // the server will return instantly if head_sha matches.
+    }
+
     set({ loading: true, error: null });
     try {
       const wt = await walkthroughApi.generate(fullName, number, familiarity, depth, timeout);
-      set({ walkthrough: wt, loading: false });
+      set((state) => ({
+        walkthrough: wt,
+        loading: false,
+        cache: { ...state.cache, [key]: wt },
+      }));
     } catch (e) {
       let msg: string;
       if (e instanceof DOMException && e.name === 'AbortError') {
@@ -115,6 +138,7 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   reset: () =>
     set({
       walkthrough: null,
+      cache: {},
       active: false,
       currentStep: 0,
       loading: false,

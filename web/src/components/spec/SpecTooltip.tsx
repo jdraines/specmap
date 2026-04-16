@@ -4,18 +4,19 @@ interface SpecTooltipProps {
   heading: string;
   excerpt: string;
   position: { top: number; left: number };
+  placement: 'above' | 'below';
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }
 
-export function SpecTooltip({ heading, excerpt, position, onMouseEnter, onMouseLeave }: SpecTooltipProps) {
+export function SpecTooltip({ heading, excerpt, position, placement, onMouseEnter, onMouseLeave }: SpecTooltipProps) {
   return createPortal(
     <div
       className="fixed z-[9999] w-72 p-3 bg-[var(--surface-1)] border border-[var(--border)] shadow-lg text-xs"
       style={{
         top: position.top,
         left: position.left,
-        transform: 'translateX(-50%)',
+        transform: placement === 'above' ? 'translateX(-50%) translateY(-100%)' : 'translateX(-50%)',
       }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
