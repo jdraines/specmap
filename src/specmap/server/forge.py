@@ -111,6 +111,24 @@ class ForgeProvider(Protocol):
         """
         ...
 
+    async def list_pull_comments(
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
+    ) -> dict:
+        """Return {threads: [...], general_comments: [...]}."""
+        ...
+
+    async def post_pull_comment(
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
+        body: str, *,
+        thread_id: str | None = None,
+        path: str | None = None,
+        line: int | None = None,
+        side: str | None = None,
+        head_sha: str | None = None,
+    ) -> dict:
+        """Post comment. Returns normalized comment dict."""
+        ...
+
     def clone_url(self, owner: str, repo: str, token: str) -> str:
         """Return HTTPS clone URL with embedded auth token."""
         ...

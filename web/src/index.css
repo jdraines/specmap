@@ -20,6 +20,8 @@
   --accent-text: #2563eb;
   --annotation-bg: #f0f9ff;
   --annotation-border: #38bdf8;
+  --comment-bg: #f5f3ff;
+  --comment-border: #a78bfa;
   --insert-bg: #e2f9e8;
   --insert-text: #15803d;
   --insert-gutter: #c8f5d2;
@@ -37,6 +39,7 @@
   --kbd-bg: #f1f5f9;
   --kbd-border: #cbd5e1;
   --annotation-spotlight-bg: color-mix(in srgb, var(--annotation-border) 8%, transparent);
+  --spec-highlight-bg: #eff6ff;
 
   /* Walkthrough "boutique" tokens */
   --wt-gradient-from: #eff6ff;
@@ -65,6 +68,8 @@
   --accent-text: #60a5fa;
   --annotation-bg: #0c2d4a;
   --annotation-border: #0ea5e9;
+  --comment-bg: #1e1533;
+  --comment-border: #8b5cf6;
   --insert-bg: #133620;
   --insert-text: #4ade80;
   --insert-gutter: #0f2c1a;
@@ -82,6 +87,7 @@
   --kbd-bg: #1e293b;
   --kbd-border: #334155;
   --annotation-spotlight-bg: color-mix(in srgb, var(--annotation-border) 12%, transparent);
+  --spec-highlight-bg: #1e293b;
 
   /* Walkthrough "boutique" tokens */
   --wt-gradient-from: #1e1b4b;
@@ -202,6 +208,31 @@ tr.ann-line-hl > td:first-child {
 /* Active annotation: thicker left border to match */
 [data-ann-hover="true"] {
   border-left-width: 3px !important;
+}
+
+/* ── Gutter "+" button for new comments ── */
+.diff-gutter {
+  cursor: pointer;
+  position: relative;
+}
+
+.diff-gutter:hover::after {
+  content: '+';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+  background: var(--comment-border);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* ── Prose / markdown overrides ── */

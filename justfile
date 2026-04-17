@@ -106,7 +106,15 @@ versions:
 # Bump version (updates pyproject.toml)
 version VERSION:
     sed -i 's/^version = ".*"/version = "{{VERSION}}"/' pyproject.toml
-    @echo "specmap → {{VERSION}}. Tag with: git tag v{{VERSION}}"
+    @echo "specmap → {{VERSION}}"
+
+# Bump version, commit, tag, and push (triggers PyPI publish via GH Actions)
+release VERSION: (version VERSION)
+    git add pyproject.toml
+    git commit -m "Release {{VERSION}}"
+    git tag v{{VERSION}}
+    git push && git push --tags
+    @echo "Released v{{VERSION}} — GitHub Actions will publish to PyPI"
 
 # --- Deployment ---
 
@@ -119,6 +127,37 @@ image-build:
 # Build Python wheel with bundled frontend
 build: web-build
     uv build
+
+# Publish to PyPI (builds first, asks for confirmation)
+publish: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+    echo "About to publish specmap v${version} to PyPI"
+    echo "Files:"
+    ls -lh dist/specmap-${version}*
+    echo ""
+    read -p "Publish to PyPI? [y/N] " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+    uvx twine upload --repository pypi dist/specmap-${version}*
+    echo "Published specmap v${version} to PyPI"
+
+# Publish to TestPyPI (builds first, asks for confirmation)
+publish-test: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+    echo "About to publish specmap v${version} to TestPyPI"
+    read -p "Publish to TestPyPI? [y/N] " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+    uvx twine upload --repository testpypi dist/specmap-${version}*
+    echo "Published specmap v${version} to TestPyPI"
 
 # Run full dev stack (API + Vite dev server)
 dev:

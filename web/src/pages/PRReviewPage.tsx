@@ -5,6 +5,7 @@ import { useSpecPanelStore } from '../stores/specPanelStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useWalkthroughStore } from '../stores/walkthroughStore';
+import { useCommentStore } from '../stores/commentStore';
 import { useKeyboardNav } from '../hooks/useKeyboardNav';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -13,6 +14,8 @@ import { SpecPanel } from '../components/spec/SpecPanel';
 import { ReviewToolbar } from '../components/review/ReviewToolbar';
 import { AnnotationNav } from '../components/review/AnnotationNav';
 import { GenerateAnnotationsBanner } from '../components/review/GenerateAnnotationsBanner';
+import { ConversationPanel } from '../components/comments/ConversationPanel';
+import { FileTree } from '../components/filetree/FileTree';
 import { WalkthroughBanner } from '../components/walkthrough/WalkthroughBanner';
 import { WalkthroughNav } from '../components/walkthrough/WalkthroughNav';
 
@@ -21,6 +24,7 @@ function KeyboardHelpOverlay({ onClose, walkthroughActive }: { onClose: () => vo
     ['j / k', 'next / prev file'],
     ['n / p', 'next / prev annotation'],
     ['o', 'toggle file collapse'],
+    ['b', 'toggle file tree'],
     ['t', 'cycle theme'],
     ['?', 'toggle this help'],
     ['Esc', 'close modal / help'],
@@ -67,7 +71,10 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
   const { pr, files, annotationsByFile, loading, error, fetchReview, checkCanGenerate } = useReviewStore();
   const setContext = useSpecPanelStore((s) => s.setContext);
   const closeModal = useSpecPanelStore((s) => s.closeModal);
+  const preloadSpecs = useSpecPanelStore((s) => s.preloadSpecs);
   const resolvedMode = useLayoutStore((s) => s.resolvedMode);
+  const fileTreeOpen = useLayoutStore((s) => s.fileTreeOpen);
+  const toggleFileTree = useLayoutStore((s) => s.toggleFileTree);
   const cycleTheme = useThemeStore((s) => s.cycle);
   const walkthroughActive = useWalkthroughStore((s) => s.active);
   const walkthroughData = useWalkthroughStore((s) => s.walkthrough);
@@ -76,6 +83,10 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
   const walkthroughExit = useWalkthroughStore((s) => s.exit);
   const walkthroughNextStep = useWalkthroughStore((s) => s.nextStep);
   const walkthroughPrevStep = useWalkthroughStore((s) => s.prevStep);
+  const fetchComments = useCommentStore((s) => s.fetchComments);
+  const startPolling = useCommentStore((s) => s.startPolling);
+  const stopPolling = useCommentStore((s) => s.stopPolling);
+  const threadsByFile = useCommentStore((s) => s.threadsByFile);
 
   const allAnnotations = useMemo(() => {
     const result: Annotation[] = [];
@@ -83,13 +94,31 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
     return result;
   }, [annotationsByFile]);
 
+  const commentCountByFile = useMemo(() => {
+    const counts = new Map<string, number>();
+    threadsByFile.forEach((threads, file) => {
+      counts.set(file, threads.length);
+    });
+    return counts;
+  }, [threadsByFile]);
+
   useEffect(() => {
     if (!fullName) return;
     fetchReview(fullName, prNumber);
     setContext(fullName, prNumber);
     checkAvailable();
     checkCanGenerate();
-  }, [fullName, prNumber, fetchReview, setContext, checkAvailable, checkCanGenerate]);
+    fetchComments(fullName, prNumber);
+    startPolling(fullName, prNumber);
+    return () => stopPolling();
+  }, [fullName, prNumber, fetchReview, setContext, checkAvailable, checkCanGenerate, fetchComments, startPolling, stopPolling]);
+
+  // Preload spec files referenced by annotations and walkthrough
+  useEffect(() => {
+    if (allAnnotations.length > 0) {
+      preloadSpecs(allAnnotations, walkthroughData?.steps);
+    }
+  }, [allAnnotations, walkthroughData, preloadSpecs]);
 
   const currentWalkthroughStep = walkthroughActive && walkthroughData
     ? walkthroughData.steps[walkthroughStep] ?? null
@@ -110,6 +139,7 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
     annotationCount: allAnnotations.length,
     onToggleTheme: cycleTheme,
     onCloseModal: closeModal,
+    onToggleFileTree: toggleFileTree,
     walkthroughActive,
     onWalkthroughNext: walkthroughNextStep,
     onWalkthroughPrev: walkthroughPrevStep,
@@ -135,23 +165,39 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
         <span className="text-[var(--text-muted)]">{pr.head_sha.slice(0, 7)}</span>
       </p>
       <ReviewToolbar annotations={allAnnotations} files={files} annotationsByFile={annotationsByFile} />
-      <GenerateAnnotationsBanner
-        fullName={fullName}
-        prNumber={prNumber}
-        hasAnnotations={allAnnotations.length > 0}
-      />
-      <WalkthroughBanner
-        fullName={fullName}
-        prNumber={prNumber}
-        hasAnnotations={allAnnotations.length > 0}
-      />
-      <DiffViewer
-        files={files}
-        annotationsByFile={annotationsByFile}
-        mode={resolvedMode}
-        walkthroughStep={currentWalkthroughStep}
-        walkthroughTotalSteps={walkthroughData?.steps.length ?? 0}
-      />
+      <div className="flex gap-4">
+        {fileTreeOpen && (
+          <div className="w-[240px] flex-shrink-0 sticky top-0 self-start max-h-[calc(100vh-64px)] overflow-y-auto bg-[var(--surface-1)] border border-[var(--border)]">
+            <FileTree
+              files={files}
+              annotationsByFile={annotationsByFile}
+              commentCountByFile={commentCountByFile}
+            />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <GenerateAnnotationsBanner
+            fullName={fullName}
+            prNumber={prNumber}
+            hasAnnotations={allAnnotations.length > 0}
+          />
+          <WalkthroughBanner
+            fullName={fullName}
+            prNumber={prNumber}
+            hasAnnotations={allAnnotations.length > 0}
+          />
+          <ConversationPanel fullName={fullName} prNumber={prNumber} />
+          <DiffViewer
+            files={files}
+            annotationsByFile={annotationsByFile}
+            mode={resolvedMode}
+            walkthroughStep={currentWalkthroughStep}
+            walkthroughTotalSteps={walkthroughData?.steps.length ?? 0}
+            fullName={fullName}
+            prNumber={prNumber}
+          />
+        </div>
+      </div>
       <SpecPanel />
       <AnnotationNav annotations={allAnnotations} />
       <WalkthroughNav />

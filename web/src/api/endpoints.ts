@@ -11,6 +11,9 @@ import type {
   Capabilities,
   GenerateProgress,
   PaginatedResponse,
+  CommentsResponse,
+  Comment,
+  PostCommentRequest,
 } from './types';
 
 export const auth = {
@@ -72,6 +75,16 @@ export const pulls = {
       `/api/v1/repos/${fullName}/pulls/${number}/cache`,
       { method: 'DELETE' },
     ),
+};
+
+export const comments = {
+  list: (fullName: string, number: number) =>
+    apiFetch<CommentsResponse>(`/api/v1/repos/${fullName}/pulls/${number}/comments`),
+  post: (fullName: string, number: number, data: PostCommentRequest) =>
+    apiFetch<Comment>(`/api/v1/repos/${fullName}/pulls/${number}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 export const specs = {

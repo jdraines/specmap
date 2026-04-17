@@ -1,13 +1,15 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Diff, Hunk, Decoration, getChangeKey, useSourceExpansion } from 'react-diff-view';
 import type { FileData, HunkData, ChangeData } from 'react-diff-view';
-import type { PullFile, Annotation } from '../../api/types';
+import type { PullFile, Annotation, CommentThread as CommentThreadType } from '../../api/types';
 import { pulls } from '../../api/endpoints';
 import { useSpecPanelStore } from '../../stores/specPanelStore';
 import { FileHeader } from './FileHeader';
 import { AnnotationWidget } from './AnnotationWidget';
 import { SideAnnotation } from './SideAnnotation';
 import { HunkExpander } from './HunkExpander';
+import { InlineCommentWidget } from '../comments/InlineCommentWidget';
+import { NewCommentForm } from '../comments/NewCommentForm';
 import { useAnnotationPositions } from '../../hooks/useAnnotationPositions';
 import { useAnnotationSpacers } from '../../hooks/useAnnotationSpacers';
 
@@ -15,8 +17,11 @@ interface DiffFileProps {
   file: PullFile;
   diffData: FileData;
   annotations: Annotation[];
+  commentThreads: CommentThreadType[];
   mode: 'inline' | 'side';
   fileIndex: number;
+  fullName: string;
+  prNumber: number;
 }
 
 function findChangeForLine(hunks: HunkData[], line: number): ChangeData | null {
@@ -33,11 +38,14 @@ function findChangeForLine(hunks: HunkData[], line: number): ChangeData | null {
   return null;
 }
 
-export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffFileProps) {
-  const fullName = useSpecPanelStore((s) => s.fullName);
-  const number = useSpecPanelStore((s) => s.prNumber);
+export function DiffFile({ file, diffData, annotations, commentThreads, mode, fileIndex, fullName: propFullName, prNumber: propPrNumber }: DiffFileProps) {
+  const storeFullName = useSpecPanelStore((s) => s.fullName);
+  const storeNumber = useSpecPanelStore((s) => s.prNumber);
+  const fullName = propFullName || storeFullName;
+  const number = propPrNumber || storeNumber;
   const [collapsed, setCollapsed] = useState(false);
   const [hoveredAnnId, setHoveredAnnId] = useState<string | null>(null);
+  const [newCommentLine, setNewCommentLine] = useState<number | null>(null);
   const [oldSource, setOldSource] = useState<string | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const pendingExpand = useRef<[number, number] | null>(null);
@@ -223,6 +231,29 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
 
   const handleMouseLeave = useCallback(() => setHoveredAnnId(null), []);
 
+  const handleGutterClick = useCallback(
+    (e: React.MouseEvent) => {
+      const td = (e.target as HTMLElement).closest('td.diff-gutter');
+      if (!td) return;
+      const tr = td.closest('tr[id]');
+      if (!tr) return;
+      // Look up line number from change key → line number mapping
+      const changeKey = tr.getAttribute('id');
+      if (changeKey) {
+        for (const hunk of renderingHunks) {
+          for (const change of hunk.changes) {
+            if (getChangeKey(change) === changeKey && change.type !== 'delete') {
+              const line = change.type === 'insert' ? change.lineNumber : change.newLineNumber;
+              setNewCommentLine(line);
+              return;
+            }
+          }
+        }
+      }
+    },
+    [renderingHunks],
+  );
+
   // Apply/remove highlight classes on <tr> elements and annotation elements via DOM
   useEffect(() => {
     const container = containerRef.current;
@@ -279,8 +310,45 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
       }
     }
 
+    // Place comment thread widgets
+    for (const thread of commentThreads) {
+      if (thread.line == null) continue;
+      const change = findChangeForLine(renderingHunks, thread.line);
+      if (change) {
+        const key = getChangeKey(change);
+        const widget = (
+          <InlineCommentWidget
+            key={`comment-${thread.thread_id}`}
+            thread={thread}
+            fullName={fullName || ''}
+            prNumber={number || 0}
+          />
+        );
+        w[key] = w[key] ? <>{w[key]}{widget}</> : widget;
+      }
+    }
+
+    // Place new comment form widget
+    if (newCommentLine != null) {
+      const change = findChangeForLine(renderingHunks, newCommentLine);
+      if (change) {
+        const key = getChangeKey(change);
+        const form = (
+          <NewCommentForm
+            key="new-comment-form"
+            fullName={fullName || ''}
+            prNumber={number || 0}
+            path={file.filename}
+            line={newCommentLine}
+            onClose={() => setNewCommentLine(null)}
+          />
+        );
+        w[key] = w[key] ? <>{w[key]}{form}</> : form;
+      }
+    }
+
     return { widgets: w, unmatchedAnnotations: unmatched };
-  }, [annotations, renderingHunks, mode]);
+  }, [annotations, commentThreads, renderingHunks, mode, newCommentLine, fullName, number, file.filename]);
 
   const sideResult = useAnnotationPositions(annotations, renderingHunks, mode, containerRef);
 
@@ -368,6 +436,7 @@ export function DiffFile({ file, diffData, annotations, mode, fileIndex }: DiffF
             style={mode === 'side' && sideResult.minHeight > 0 ? { minHeight: sideResult.minHeight } : undefined}
             onMouseOver={handleMouseOver}
             onMouseLeave={handleMouseLeave}
+            onClick={handleGutterClick}
           >
             <div className={mode === 'side' ? 'pr-[380px]' : ''}>
               <div className="text-sm">

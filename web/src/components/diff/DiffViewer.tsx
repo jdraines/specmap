@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { parseDiff } from 'react-diff-view';
-import type { PullFile, Annotation, WalkthroughStep } from '../../api/types';
+import type { PullFile, Annotation, WalkthroughStep, CommentThread } from '../../api/types';
+import { useCommentStore } from '../../stores/commentStore';
 import { DiffFile } from './DiffFile';
 import { WalkthroughStepCard } from '../walkthrough/WalkthroughStepCard';
 import 'react-diff-view/style/index.css';
@@ -11,6 +12,8 @@ interface DiffViewerProps {
   mode: 'inline' | 'side';
   walkthroughStep?: WalkthroughStep | null;
   walkthroughTotalSteps?: number;
+  fullName: string;
+  prNumber: number;
 }
 
 function isSpecmapFile(filename: string): boolean {
@@ -22,7 +25,15 @@ function patchToUnifiedDiff(filename: string, patch: string | undefined): string
   return `--- a/${filename}\n+++ b/${filename}\n${patch}`;
 }
 
-function renderFile(file: PullFile, annotationsByFile: Map<string, Annotation[]>, mode: 'inline' | 'side', index: number) {
+function renderFile(
+  file: PullFile,
+  annotationsByFile: Map<string, Annotation[]>,
+  commentThreadsByFile: Map<string, CommentThread[]>,
+  mode: 'inline' | 'side',
+  index: number,
+  fullName: string,
+  prNumber: number,
+) {
   const diffText = patchToUnifiedDiff(file.filename, file.patch);
   if (!diffText) {
     return (
@@ -37,6 +48,7 @@ function renderFile(file: PullFile, annotationsByFile: Map<string, Annotation[]>
   if (!parsed) return null;
 
   const annotations = annotationsByFile.get(file.filename) ?? [];
+  const commentThreads = commentThreadsByFile.get(file.filename) ?? [];
 
   return (
     <DiffFile
@@ -44,14 +56,18 @@ function renderFile(file: PullFile, annotationsByFile: Map<string, Annotation[]>
       file={file}
       diffData={parsed}
       annotations={annotations}
+      commentThreads={commentThreads}
       mode={mode}
       fileIndex={index}
+      fullName={fullName}
+      prNumber={prNumber}
     />
   );
 }
 
-export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, walkthroughTotalSteps }: DiffViewerProps) {
+export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, walkthroughTotalSteps, fullName, prNumber }: DiffViewerProps) {
   const [showSpecmap, setShowSpecmap] = useState(false);
+  const threadsByFile = useCommentStore((s) => s.threadsByFile);
 
   const { regularFiles, specmapFiles } = useMemo(() => {
     const regular: PullFile[] = [];
@@ -88,14 +104,14 @@ export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, wa
       )}
       {showSpecmap &&
         specmapFiles.map((file, i) =>
-          renderFile(file, annotationsByFile, mode, i),
+          renderFile(file, annotationsByFile, threadsByFile, mode, i, fullName, prNumber),
         )}
       {regularFiles.map((file, index) => (
         <div key={file.filename}>
           {walkthroughStep?.file === file.filename && walkthroughTotalSteps && (
             <WalkthroughStepCard step={walkthroughStep} totalSteps={walkthroughTotalSteps} />
           )}
-          {renderFile(file, annotationsByFile, mode, specmapFiles.length + index)}
+          {renderFile(file, annotationsByFile, threadsByFile, mode, specmapFiles.length + index, fullName, prNumber)}
         </div>
       ))}
     </div>

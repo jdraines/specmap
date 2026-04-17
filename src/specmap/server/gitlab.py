@@ -260,6 +260,117 @@ class GitLabProvider:
             url = _gitlab_next_url(resp)
         return entries
 
+    async def list_pull_comments(
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
+    ) -> dict:
+        proj_id = self._project_id(owner, repo)
+        discussions: list[dict] = []
+        url: str | None = (
+            f"{self.api_base}/projects/{proj_id}/merge_requests/{number}/discussions?per_page=100"
+        )
+        while url:
+            resp = await client.get(url, headers=self._headers(token))
+            resp.raise_for_status()
+            discussions.extend(resp.json())
+            url = _gitlab_next_url(resp)
+
+        threads = []
+        general_comments = []
+        for disc in discussions:
+            notes = disc.get("notes", [])
+            if not notes:
+                continue
+            # Check if any note has a line-level position
+            first_note = notes[0]
+            position = first_note.get("position")
+            is_line_level = position is not None and position.get("new_line") is not None
+
+            comments = [self._normalize_comment(n) for n in notes]
+            thread = {
+                "thread_id": disc["id"],
+                "path": position.get("new_path") if position else None,
+                "line": position.get("new_line") if position else None,
+                "side": "RIGHT" if is_line_level else None,
+                "is_resolved": bool(notes[-1].get("resolved", False)) if disc.get("notes") else False,
+                "is_outdated": bool(position.get("line_range") is None and position.get("new_line") is None) if position else False,
+                "comments": comments,
+                "comment_count": len(comments),
+                "latest_updated_at": max(n.get("updated_at", "") for n in notes),
+            }
+            if is_line_level:
+                threads.append(thread)
+            else:
+                general_comments.append(thread)
+
+        return {"threads": threads, "general_comments": general_comments}
+
+    async def post_pull_comment(
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
+        body: str, *,
+        thread_id: str | None = None,
+        path: str | None = None,
+        line: int | None = None,
+        side: str | None = None,
+        head_sha: str | None = None,
+    ) -> dict:
+        proj_id = self._project_id(owner, repo)
+        if thread_id:
+            # Reply to existing discussion
+            resp = await client.post(
+                f"{self.api_base}/projects/{proj_id}/merge_requests/{number}/discussions/{thread_id}/notes",
+                json={"body": body},
+                headers=self._headers(token),
+            )
+        elif path and line is not None:
+            # New line-level discussion — need diff_refs from the MR
+            mr_resp = await client.get(
+                f"{self.api_base}/projects/{proj_id}/merge_requests/{number}",
+                headers=self._headers(token),
+            )
+            mr_resp.raise_for_status()
+            diff_refs = mr_resp.json().get("diff_refs", {})
+            resp = await client.post(
+                f"{self.api_base}/projects/{proj_id}/merge_requests/{number}/discussions",
+                json={
+                    "body": body,
+                    "position": {
+                        "position_type": "text",
+                        "base_sha": diff_refs.get("base_sha", ""),
+                        "head_sha": diff_refs.get("head_sha", ""),
+                        "start_sha": diff_refs.get("start_sha", ""),
+                        "new_path": path,
+                        "new_line": line,
+                    },
+                },
+                headers=self._headers(token),
+            )
+        else:
+            # General MR note
+            resp = await client.post(
+                f"{self.api_base}/projects/{proj_id}/merge_requests/{number}/notes",
+                json={"body": body},
+                headers=self._headers(token),
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        # For discussions, the response is the discussion object; extract the note
+        if "notes" in data:
+            return self._normalize_comment(data["notes"][-1])
+        return self._normalize_comment(data)
+
+    @staticmethod
+    def _normalize_comment(note: dict) -> dict:
+        author = note.get("author") or {}
+        return {
+            "id": str(note["id"]),
+            "author_login": author.get("username", ""),
+            "author_avatar": author.get("avatar_url", ""),
+            "body": note.get("body", ""),
+            "created_at": note.get("created_at", ""),
+            "updated_at": note.get("updated_at", ""),
+            "reactions": [],  # GitLab doesn't include inline; skip for v1
+        }
+
     def clone_url(self, owner: str, repo: str, token: str) -> str:
         host = self.base_url.replace("https://", "").replace("http://", "")
         return f"https://oauth2:{token}@{host}/{owner}/{repo}.git"
