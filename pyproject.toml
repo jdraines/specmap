@@ -1,8 +1,24 @@
 [project]
 name = "specmap"
-version = "0.2.32"
+version = "0.2.35"
 description = "Spec-to-code mapping: core library, MCP server, and CLI"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+authors = [
+    { name = "John Raines", email = "johndanielraines@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+]
+keywords = ["code-review", "spec-mapping", "mcp", "llm"]
 dependencies = [
     "mcp>=1.0.0",
     "litellm>=1.30.0",
@@ -26,6 +42,11 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jdraines/specmap"
+Repository = "https://github.com/jdraines/specmap"
+Issues = "https://github.com/jdraines/specmap/issues"
 
 [project.scripts]
 specmap = "specmap.cli:app"
