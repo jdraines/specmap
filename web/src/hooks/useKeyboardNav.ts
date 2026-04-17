@@ -5,13 +5,14 @@ interface KeyboardNavOptions {
   annotationCount: number;
   onToggleTheme: () => void;
   onCloseModal: () => void;
+  onToggleFileTree?: () => void;
   walkthroughActive?: boolean;
   onWalkthroughNext?: () => void;
   onWalkthroughPrev?: () => void;
   onWalkthroughExit?: () => void;
 }
 
-export function useKeyboardNav({ fileCount, annotationCount, onToggleTheme, onCloseModal, walkthroughActive, onWalkthroughNext, onWalkthroughPrev, onWalkthroughExit }: KeyboardNavOptions) {
+export function useKeyboardNav({ fileCount, annotationCount, onToggleTheme, onCloseModal, onToggleFileTree, walkthroughActive, onWalkthroughNext, onWalkthroughPrev, onWalkthroughExit }: KeyboardNavOptions) {
   const [fileIndex, setFileIndex] = useState(-1);
   const [annIndex, setAnnIndex] = useState(-1);
   const [showHelp, setShowHelp] = useState(false);
@@ -76,6 +77,10 @@ export function useKeyboardNav({ fileCount, annotationCount, onToggleTheme, onCl
           }
           break;
         }
+        case 'b': {
+          onToggleFileTree?.();
+          break;
+        }
         case 't': {
           onToggleTheme();
           break;
@@ -111,7 +116,7 @@ export function useKeyboardNav({ fileCount, annotationCount, onToggleTheme, onCl
         }
       }
     },
-    [fileIndex, annIndex, fileCount, annotationCount, scrollToFile, scrollToAnnotation, onToggleTheme, onCloseModal, walkthroughActive, onWalkthroughNext, onWalkthroughPrev, onWalkthroughExit],
+    [fileIndex, annIndex, fileCount, annotationCount, scrollToFile, scrollToAnnotation, onToggleTheme, onCloseModal, onToggleFileTree, walkthroughActive, onWalkthroughNext, onWalkthroughPrev, onWalkthroughExit],
   );
 
   useEffect(() => {

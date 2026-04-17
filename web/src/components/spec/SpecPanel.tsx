@@ -10,6 +10,7 @@ export function SpecPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Fallback fetch if content wasn't preloaded (e.g., preload failed or new ref)
   useEffect(() => {
     if (!isModalOpen || !modalRef) return;
 

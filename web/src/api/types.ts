@@ -124,6 +124,46 @@ export interface PaginatedResponse<T> {
   total_pages: number;
 }
 
+export interface CommentReaction {
+  emoji: string;
+  count: number;
+}
+
+export interface Comment {
+  id: string;
+  author_login: string;
+  author_avatar: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  reactions: CommentReaction[];
+}
+
+export interface CommentThread {
+  thread_id: string;
+  path: string | null;
+  line: number | null;
+  side: 'LEFT' | 'RIGHT' | null;
+  is_resolved: boolean;
+  is_outdated: boolean;
+  comments: Comment[];
+  comment_count: number;
+  latest_updated_at: string;
+}
+
+export interface CommentsResponse {
+  threads: CommentThread[];
+  general_comments: CommentThread[];
+}
+
+export interface PostCommentRequest {
+  body: string;
+  thread_id?: string;
+  path?: string;
+  line?: number;
+  side?: string;
+}
+
 export interface GenerateProgress {
   phase: 'starting' | 'cloning' | 'context' | 'annotating';
   batch?: number;

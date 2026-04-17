@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import secrets
 from urllib.parse import urlencode
@@ -254,6 +255,124 @@ class GitHubProvider:
                 "GitHub tree listing truncated for %s/%s@%s", owner, repo, sha
             )
         return [{"path": e["path"], "type": e["type"]} for e in data.get("tree", [])]
+
+    async def list_pull_comments(
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
+    ) -> dict:
+        async def fetch_all(url: str) -> list[dict]:
+            items: list[dict] = []
+            while url:
+                resp = await client.get(url, headers=self._headers(token))
+                resp.raise_for_status()
+                items.extend(resp.json())
+                url = _next_link(resp)
+            return items
+
+        issue_url = f"{self.base_url}/repos/{owner}/{repo}/issues/{number}/comments?per_page=100"
+        review_url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100"
+        issue_comments, review_comments = await asyncio.gather(
+            fetch_all(issue_url), fetch_all(review_url),
+        )
+
+        # Build threads from review comments via in_reply_to_id chains
+        root_map: dict[int, list[dict]] = {}  # root_id -> [comments]
+        child_to_root: dict[int, int] = {}
+        for c in review_comments:
+            parent = c.get("in_reply_to_id")
+            if parent is None:
+                root_map.setdefault(c["id"], []).append(c)
+            else:
+                # Walk up to find root
+                root = child_to_root.get(parent, parent)
+                child_to_root[c["id"]] = root
+                root_map.setdefault(root, []).append(c)
+
+        threads = []
+        for root_id, comments in root_map.items():
+            comments.sort(key=lambda c: c["created_at"])
+            root = comments[0]
+            threads.append({
+                "thread_id": str(root_id),
+                "path": root.get("path"),
+                "line": root.get("line"),
+                "side": root.get("side"),
+                "is_resolved": False,
+                "is_outdated": root.get("position") is None and root.get("original_position") is not None,
+                "comments": [self._normalize_comment(c) for c in comments],
+                "comment_count": len(comments),
+                "latest_updated_at": max(c["updated_at"] for c in comments),
+            })
+
+        general_comments = []
+        for c in issue_comments:
+            general_comments.append({
+                "thread_id": str(c["id"]),
+                "path": None,
+                "line": None,
+                "side": None,
+                "is_resolved": False,
+                "is_outdated": False,
+                "comments": [self._normalize_comment(c)],
+                "comment_count": 1,
+                "latest_updated_at": c["updated_at"],
+            })
+
+        return {"threads": threads, "general_comments": general_comments}
+
+    async def post_pull_comment(
+        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
+        body: str, *,
+        thread_id: str | None = None,
+        path: str | None = None,
+        line: int | None = None,
+        side: str | None = None,
+        head_sha: str | None = None,
+    ) -> dict:
+        if thread_id:
+            # Reply to existing review thread
+            resp = await client.post(
+                f"{self.base_url}/repos/{owner}/{repo}/pulls/{number}/comments",
+                json={"body": body, "in_reply_to_id": int(thread_id)},
+                headers=self._headers(token),
+            )
+        elif path and line is not None:
+            # New line-level comment
+            payload: dict = {"body": body, "path": path, "line": line, "commit_id": head_sha}
+            if side:
+                payload["side"] = side
+            resp = await client.post(
+                f"{self.base_url}/repos/{owner}/{repo}/pulls/{number}/comments",
+                json=payload,
+                headers=self._headers(token),
+            )
+        else:
+            # General issue comment
+            resp = await client.post(
+                f"{self.base_url}/repos/{owner}/{repo}/issues/{number}/comments",
+                json={"body": body},
+                headers=self._headers(token),
+            )
+        resp.raise_for_status()
+        return self._normalize_comment(resp.json())
+
+    @staticmethod
+    def _normalize_comment(c: dict) -> dict:
+        reactions: list[dict] = []
+        r = c.get("reactions", {})
+        for emoji in ("+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"):
+            count = r.get(emoji, 0)
+            if count:
+                reactions.append({"emoji": emoji, "count": count})
+        user = c.get("user") or {}
+        return {
+            "id": str(c["id"]),
+            "author_login": user.get("login", ""),
+            "author_avatar": user.get("avatar_url", ""),
+            "body": c.get("body", ""),
+            "created_at": c.get("created_at", ""),
+            "updated_at": c.get("updated_at", ""),
+            "reactions": reactions,
+        }
 
     def clone_url(self, owner: str, repo: str, token: str) -> str:
         # Derive host: api.github.com → github.com, {host}/api/v3 → {host}

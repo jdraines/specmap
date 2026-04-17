@@ -742,6 +742,41 @@ def create_app(config: ServerConfig) -> FastAPI:
         except ForgeNotFound:
             raise HTTPError(404, "Spec file not found")
 
+    # --- Comments ---
+
+    async def _handle_list_comments(request: Request, owner: str, repo: str, number: int):
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+        return await provider.list_pull_comments(_http(request), token, owner, repo, number)
+
+    async def _handle_post_comment(request: Request, owner: str, repo: str, number: int):
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+        data = await request.json()
+
+        body = data.get("body", "").strip()
+        if not body:
+            raise HTTPError(400, "Comment body required")
+
+        thread_id = data.get("thread_id")
+        path = data.get("path")
+        line_val = data.get("line")
+        side = data.get("side")
+
+        head_sha = None
+        if path and not thread_id:
+            p = await provider.get_pull(_http(request), token, owner, repo, number)
+            head_sha = p["head_sha"]
+
+        result = await provider.post_pull_comment(
+            _http(request), token, owner, repo, number,
+            body, thread_id=thread_id, path=path, line=line_val,
+            side=side, head_sha=head_sha,
+        )
+        return result
+
     # --- Generate Annotations ---
 
     def _sse(event: str, data: dict) -> str:
@@ -1141,6 +1176,10 @@ def create_app(config: ServerConfig) -> FastAPI:
             return await _handle_get_file_source(request, owner, name, number)
         if action == "annotations":
             return await _handle_get_annotations(request, owner, name, number)
+        if action == "comments" and method == "GET":
+            return await _handle_list_comments(request, owner, name, number)
+        if action == "comments" and method == "POST":
+            return await _handle_post_comment(request, owner, name, number)
         if action == "generate-annotations" and method == "POST":
             return await _handle_generate_annotations(request, owner, name, number)
         if action == "cache" and method == "DELETE":

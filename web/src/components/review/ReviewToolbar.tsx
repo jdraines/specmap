@@ -10,7 +10,7 @@ interface ReviewToolbarProps {
 }
 
 export function ReviewToolbar({ annotations, files, annotationsByFile }: ReviewToolbarProps) {
-  const { annotationMode, setAnnotationMode } = useLayoutStore();
+  const { annotationMode, setAnnotationMode, fileTreeOpen, toggleFileTree } = useLayoutStore();
 
   const annotationCount = annotations.length;
   const annotatedFiles = new Set(annotations.map((a) => a.file)).size;
@@ -24,6 +24,17 @@ export function ReviewToolbar({ annotations, files, annotationsByFile }: ReviewT
           <span className="text-[var(--text-muted)]"> &middot; {files.length} changed</span>
         </span>
         <FileJumper files={files} annotationsByFile={annotationsByFile} />
+        <button
+          onClick={toggleFileTree}
+          className={`px-2 py-0.5 text-xs cursor-pointer border ${
+            fileTreeOpen
+              ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+              : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--text-muted)]'
+          }`}
+          title="Toggle file tree (b)"
+        >
+          tree
+        </button>
       </div>
       <div className="flex items-center gap-1">
         <span className="text-[var(--text-muted)] mr-2">layout:</span>
