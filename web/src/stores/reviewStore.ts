@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { PullRequest, PullFile, SpecmapFile, Annotation, GenerateProgress } from '../api/types';
 import { pulls, capabilities } from '../api/endpoints';
+import { useWalkthroughStore } from './walkthroughStore';
 
 interface ReviewState {
   pr: PullRequest | null;
@@ -107,8 +108,6 @@ export const useReviewStore = create<ReviewState>((set) => ({
         annotationsByFile: new Map(),
         clearingCache: false,
       });
-      // Also reset walkthrough store
-      const { useWalkthroughStore } = await import('./walkthroughStore');
       useWalkthroughStore.getState().reset();
     } catch {
       set({ clearingCache: false });

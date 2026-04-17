@@ -216,23 +216,26 @@ tr.ann-line-hl > td:first-child {
   position: relative;
 }
 
+.diff-gutter:hover {
+  background: var(--comment-border) !important;
+}
+
+.diff-gutter:hover * {
+  visibility: hidden;
+}
+
 .diff-gutter:hover::after {
   content: '+';
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 16px;
-  height: 16px;
-  line-height: 16px;
+  inset: 0;
+  line-height: 1;
   text-align: center;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: bold;
   color: white;
-  background: var(--comment-border);
-  border-radius: 2px;
   pointer-events: none;
   z-index: 1;
+  padding-top: 2px;
 }
 
 /* ── Prose / markdown overrides ── */
