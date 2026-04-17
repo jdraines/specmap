@@ -235,16 +235,17 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
     (e: React.MouseEvent) => {
       const td = (e.target as HTMLElement).closest('td.diff-gutter');
       if (!td) return;
+      // Prevent the anchor inside the gutter from navigating
+      e.preventDefault();
       const tr = td.closest('tr[id]');
       if (!tr) return;
-      // Look up line number from change key → line number mapping
       const changeKey = tr.getAttribute('id');
       if (changeKey) {
         for (const hunk of renderingHunks) {
           for (const change of hunk.changes) {
             if (getChangeKey(change) === changeKey && change.type !== 'delete') {
               const line = change.type === 'insert' ? change.lineNumber : change.newLineNumber;
-              setNewCommentLine(line);
+              setNewCommentLine((prev) => prev === line ? null : line);
               return;
             }
           }
@@ -280,37 +281,38 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
   }, [hoveredAnnId, annToChangeKeys]);
 
   const { widgets, unmatchedAnnotations } = useMemo(() => {
-    if (mode === 'side') return { widgets: {}, unmatchedAnnotations: [] as Annotation[] };
-
     const w: Record<string, React.ReactNode> = {};
     const unmatched: Annotation[] = [];
 
-    for (const ann of annotations) {
-      let placed = false;
-      for (let line = ann.start_line; line <= ann.end_line; line++) {
-        const change = findChangeForLine(renderingHunks, line);
-        if (change) {
-          const key = getChangeKey(change);
-          if (w[key]) {
-            w[key] = (
-              <>
-                {w[key]}
-                <AnnotationWidget annotation={ann} />
-              </>
-            );
-          } else {
-            w[key] = <AnnotationWidget annotation={ann} />;
+    // Annotation widgets only in inline mode (side mode renders them separately)
+    if (mode !== 'side') {
+      for (const ann of annotations) {
+        let placed = false;
+        for (let line = ann.start_line; line <= ann.end_line; line++) {
+          const change = findChangeForLine(renderingHunks, line);
+          if (change) {
+            const key = getChangeKey(change);
+            if (w[key]) {
+              w[key] = (
+                <>
+                  {w[key]}
+                  <AnnotationWidget annotation={ann} />
+                </>
+              );
+            } else {
+              w[key] = <AnnotationWidget annotation={ann} />;
+            }
+            placed = true;
+            break;
           }
-          placed = true;
-          break;
         }
-      }
-      if (!placed) {
-        unmatched.push(ann);
+        if (!placed) {
+          unmatched.push(ann);
+        }
       }
     }
 
-    // Place comment thread widgets
+    // Comment thread widgets render in both modes
     for (const thread of commentThreads) {
       if (thread.line == null) continue;
       const change = findChangeForLine(renderingHunks, thread.line);
@@ -328,7 +330,7 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
       }
     }
 
-    // Place new comment form widget
+    // New comment form widget renders in both modes
     if (newCommentLine != null) {
       const change = findChangeForLine(renderingHunks, newCommentLine);
       if (change) {

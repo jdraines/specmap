@@ -71,6 +71,10 @@ def create_app(config: ServerConfig) -> FastAPI:
         app.state.provider = provider
         app.state.auth_mode = detect_auth_mode(config, provider_name)
         app.state.current_repo = detect_repo_full_name()
+        if app.state.current_repo:
+            logger.info("Local repo detected: %s (annotations will persist to .specmap/)", app.state.current_repo)
+        else:
+            logger.info("No local repo detected — annotations will not be saved to disk")
 
         # PAT mode: resolve token on startup (pass user config for forge tokens)
         _user_cfg: SpecmapConfig | None = None
@@ -914,10 +918,14 @@ def create_app(config: ServerConfig) -> FastAPI:
                 if event_type == "complete":
                     # Write to local file if running in the repo
                     if _is_local(request, owner, repo):
-                        sf = SpecmapFileModel.model_validate(data)
-                        sf.branch = branch
-                        sf.updated_by = "server:generate"
-                        _file_mgr().save(sf)
+                        try:
+                            sf = SpecmapFileModel.model_validate(data)
+                            sf.branch = branch
+                            sf.updated_by = "server:generate"
+                            path = _file_mgr().save(sf)
+                            logger.info("Saved annotations to %s", path)
+                        except Exception as e:
+                            logger.error("Failed to save annotations to .specmap/: %s", e)
                     yield _sse("complete", data)
                     break
                 elif event_type == "error":

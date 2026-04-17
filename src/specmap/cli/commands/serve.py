@@ -39,11 +39,18 @@ def _find_open_port(host: str, preferred: int, max_attempts: int = 20) -> int:
         return s.getsockname()[1]
 
 
-def _open_browser_after_delay(url: str, delay: float = 0.8):
+def _open_browser_when_ready(url: str, timeout: float = 10.0):
     def _open():
         import time
+        import urllib.request
 
-        time.sleep(delay)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                urllib.request.urlopen(url, timeout=1)
+                break
+            except Exception:
+                time.sleep(0.15)
         webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
@@ -204,7 +211,7 @@ def serve(
     # Auto-open browser when serving a frontend (not a bare API)
     if resolved_static and not no_open:
         url = f"http://{'localhost' if host in ('0.0.0.0', '127.0.0.1') else host}:{actual_port}"
-        _open_browser_after_delay(url)
+        _open_browser_when_ready(url)
 
     if reload:
         uvicorn.run(
