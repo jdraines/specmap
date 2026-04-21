@@ -6,6 +6,7 @@ import asyncio
 import fnmatch
 import json
 import logging
+import re
 import subprocess
 import tempfile
 import time
@@ -293,8 +294,13 @@ async def _generate_context(
         return ""
 
 
+_BRANCH_RE = re.compile(r"^[\w./_-]+$")
+
+
 def _clone_repo(clone_url: str, branch: str, dest: str) -> None:
     """Shallow clone a repo branch into dest."""
+    if not branch or not _BRANCH_RE.match(branch) or ".." in branch:
+        raise ValueError(f"Invalid branch name: {branch!r}")
     result = subprocess.run(
         ["git", "clone", "--depth=1", f"--branch={branch}", clone_url, dest],
         capture_output=True,

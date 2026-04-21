@@ -12,6 +12,7 @@ import { InlineCommentWidget } from '../comments/InlineCommentWidget';
 import { NewCommentForm } from '../comments/NewCommentForm';
 import { useAnnotationPositions } from '../../hooks/useAnnotationPositions';
 import { useAnnotationSpacers } from '../../hooks/useAnnotationSpacers';
+import { useSyntaxTokens } from '../../hooks/useSyntaxTokens';
 
 interface DiffFileProps {
   file: PullFile;
@@ -55,6 +56,7 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
 
   const isNewFile = file.status === 'added';
   const [renderingHunks, expandRange] = useSourceExpansion(diffData.hunks, oldSource);
+  const tokens = useSyntaxTokens(renderingHunks, file.filename, oldSource);
 
   // Apply pending expansions after source loads
   useEffect(() => {
@@ -446,6 +448,7 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
                   viewType="unified"
                   diffType={diffData.type}
                   hunks={renderingHunks}
+                  tokens={tokens}
                   widgets={{ ...widgets, ...spacerWidgets }}
                   generateAnchorID={(change) => getChangeKey(change)}
                 >

@@ -79,8 +79,12 @@ class SpecmapFileManager:
         return "main"
 
     def _sanitize_branch(self, branch: str) -> str:
-        """Convert branch name to safe filename: replace / with --."""
-        return branch.replace("/", "--")
+        """Convert branch name to safe filename: replace / with --, reject traversal."""
+        sanitized = branch.replace("/", "--")
+        # Reject path traversal sequences and null bytes
+        if ".." in sanitized or "\x00" in sanitized:
+            raise ValueError(f"Invalid branch name: {branch!r}")
+        return sanitized
 
     def _specmap_dir(self) -> Path:
         """Get the .specmap/ directory path."""

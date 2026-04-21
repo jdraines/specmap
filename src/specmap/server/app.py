@@ -146,9 +146,28 @@ def create_app(config: ServerConfig) -> FastAPI:
             CORSMiddleware,
             allow_origins=[config.cors_origin],
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allow_headers=["Content-Type", "Authorization"],
         )
+
+    # Security response headers
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' https://avatars.githubusercontent.com https://secure.gravatar.com data:; "
+            "connect-src 'self'"
+        )
+        if config.secure:
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        return response
 
     # --- Helpers ---
 
@@ -201,6 +220,26 @@ def create_app(config: ServerConfig) -> FastAPI:
     def _unauthorized(msg: str):
         return HTTPError(401, msg)
 
+    # --- Input validation helpers ---
+
+    _BRANCH_RE = re.compile(r"^[\w./_-]+$")
+
+    def _safe_branch(branch: str) -> str:
+        """Validate and sanitize a branch name for use in file paths."""
+        if not branch or ".." in branch or "\x00" in branch or not _BRANCH_RE.match(branch):
+            raise HTTPError(400, f"Invalid branch name: {branch!r}")
+        return branch.replace("/", "--")
+
+    def _safe_spec_path(spec_path: str) -> str:
+        """Validate a spec file path to prevent traversal."""
+        if not spec_path or "\x00" in spec_path:
+            raise HTTPError(400, "Invalid spec path")
+        from posixpath import normpath
+        normalized = normpath(spec_path)
+        if normalized.startswith("/") or normalized.startswith(".."):
+            raise HTTPError(400, "Invalid spec path")
+        return normalized
+
     # --- Annotation / Walkthrough loading helpers ---
 
     def _is_local(request: Request, owner: str, repo: str) -> bool:
@@ -213,7 +252,7 @@ def create_app(config: ServerConfig) -> FastAPI:
                                 owner: str, repo: str, branch: str, head_sha: str) -> dict:
         """Load annotations: forge API first, local file fallback, newest wins."""
         remote_data = None
-        sanitized = branch.replace("/", "--")
+        sanitized = _safe_branch(branch)
         specmap_path = f".specmap/{sanitized}.json"
         try:
             content = await provider.get_file_content(
@@ -242,7 +281,7 @@ def create_app(config: ServerConfig) -> FastAPI:
                                 familiarity: int, depth: str) -> dict | None:
         """Load walkthrough: forge API first, local file fallback, newest wins."""
         remote_data = None
-        sanitized = branch.replace("/", "--")
+        sanitized = _safe_branch(branch)
         wt_path = f".specmap/{sanitized}.walkthrough.f{familiarity}.{depth}.json"
         try:
             content = await provider.get_file_content(
@@ -686,7 +725,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
-        path = request.query_params.get("path", "")
+        path = _safe_spec_path(request.query_params.get("path", ""))
         if not path:
             raise HTTPError(400, "Missing path parameter")
         p = await provider.get_pull(_http(request), token, owner, repo, number)
@@ -1195,7 +1234,7 @@ def create_app(config: ServerConfig) -> FastAPI:
         if action == "walkthrough" and method == "POST":
             return await _handle_generate_walkthrough(request, owner, name, number)
         if action.startswith("specs/"):
-            spec_path = action[len("specs/"):]
+            spec_path = _safe_spec_path(action[len("specs/"):])
             return await _handle_get_spec_content(request, owner, name, number, spec_path)
 
         raise HTTPError(404, "Not found")

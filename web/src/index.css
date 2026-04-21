@@ -41,6 +41,23 @@
   --annotation-spotlight-bg: color-mix(in srgb, var(--annotation-border) 8%, transparent);
   --spec-highlight-bg: #eff6ff;
 
+  /* Syntax highlighting tokens */
+  --syntax-keyword: #d73a49;
+  --syntax-string: #032f62;
+  --syntax-comment: #6a737d;
+  --syntax-function: #6f42c1;
+  --syntax-number: #005cc5;
+  --syntax-operator: #d73a49;
+  --syntax-class-name: #6f42c1;
+  --syntax-punctuation: #24292e;
+  --syntax-property: #005cc5;
+  --syntax-tag: #22863a;
+  --syntax-attr-name: #6f42c1;
+  --syntax-attr-value: #032f62;
+  --syntax-builtin: #e36209;
+  --syntax-regex: #032f62;
+  --syntax-variable: #e36209;
+
   /* Walkthrough "boutique" tokens */
   --wt-gradient-from: #eff6ff;
   --wt-gradient-to: #f5f3ff;
@@ -88,6 +105,23 @@
   --kbd-border: #334155;
   --annotation-spotlight-bg: color-mix(in srgb, var(--annotation-border) 12%, transparent);
   --spec-highlight-bg: #1e293b;
+
+  /* Syntax highlighting tokens */
+  --syntax-keyword: #ff7b72;
+  --syntax-string: #a5d6ff;
+  --syntax-comment: #8b949e;
+  --syntax-function: #d2a8ff;
+  --syntax-number: #79c0ff;
+  --syntax-operator: #ff7b72;
+  --syntax-class-name: #f0883e;
+  --syntax-punctuation: #c9d1d9;
+  --syntax-property: #79c0ff;
+  --syntax-tag: #7ee787;
+  --syntax-attr-name: #d2a8ff;
+  --syntax-attr-value: #a5d6ff;
+  --syntax-builtin: #ffa657;
+  --syntax-regex: #a5d6ff;
+  --syntax-variable: #ffa657;
 
   /* Walkthrough "boutique" tokens */
   --wt-gradient-from: #1e1b4b;
@@ -237,6 +271,47 @@ tr.ann-line-hl > td:first-child {
   z-index: 1;
   padding-top: 2px;
 }
+
+/* ── Syntax highlighting token colors ── */
+.diff .token.keyword,
+.diff .token.important,
+.diff .token.atrule { color: var(--syntax-keyword); }
+
+.diff .token.string,
+.diff .token.char,
+.diff .token.template-string { color: var(--syntax-string); }
+
+.diff .token.comment,
+.diff .token.prolog,
+.diff .token.doctype,
+.diff .token.cdata { color: var(--syntax-comment); font-style: italic; }
+
+.diff .token.function { color: var(--syntax-function); }
+
+.diff .token.number,
+.diff .token.boolean { color: var(--syntax-number); }
+
+.diff .token.operator { color: var(--syntax-operator); }
+
+.diff .token.class-name { color: var(--syntax-class-name); }
+
+.diff .token.punctuation { color: var(--syntax-punctuation); }
+
+.diff .token.property,
+.diff .token.constant { color: var(--syntax-property); }
+
+.diff .token.tag { color: var(--syntax-tag); }
+
+.diff .token.attr-name { color: var(--syntax-attr-name); }
+
+.diff .token.attr-value { color: var(--syntax-attr-value); }
+
+.diff .token.builtin,
+.diff .token.symbol { color: var(--syntax-builtin); }
+
+.diff .token.regex { color: var(--syntax-regex); }
+
+.diff .token.variable { color: var(--syntax-variable); }
 
 /* ── Prose / markdown overrides ── */
 .themed-prose {
