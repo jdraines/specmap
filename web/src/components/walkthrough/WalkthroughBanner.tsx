@@ -36,6 +36,7 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
     setDepth,
     setTimeout: setStoreTimeout,
     generate,
+    cancelGenerate,
     start,
   } = useWalkthroughStore();
 
@@ -122,6 +123,14 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
                 <Spinner /> {elapsed}
               </span>
             )}
+            {loading && (
+              <button
+                onClick={cancelGenerate}
+                className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </>
         );
@@ -194,6 +203,14 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
               <span className="text-xs text-[var(--text-muted)]">
                 <Spinner /> Generating walkthrough... {elapsed}
               </span>
+            )}
+            {loading && (
+              <button
+                onClick={cancelGenerate}
+                className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
+              >
+                Cancel
+              </button>
             )}
           </div>
 

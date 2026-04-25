@@ -54,6 +54,14 @@ class SpecmapFile(BaseModel):
     file_hashes: dict[str, str] = Field(default_factory=dict)
 
 
+class ChatMessage(BaseModel):
+    """A single message in a walkthrough step chat."""
+
+    role: str  # "user" or "assistant"
+    content: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class WalkthroughStep(BaseModel):
     """A single step in a walkthrough."""
 
@@ -64,6 +72,7 @@ class WalkthroughStep(BaseModel):
     start_line: int = 0
     end_line: int = 0
     refs: list[dict] = Field(default_factory=list)
+    chat: list[ChatMessage] = Field(default_factory=list)
 
 
 class WalkthroughFile(BaseModel):

@@ -331,6 +331,18 @@ tr.ann-line-hl > td:first-child {
   color: var(--text-primary);
 }
 
+.themed-prose p {
+  margin: 0.75em 0;
+}
+
+.themed-prose p:first-child {
+  margin-top: 0;
+}
+
+.themed-prose p:last-child {
+  margin-bottom: 0;
+}
+
 .themed-prose code {
   color: var(--accent-text);
   background-color: var(--surface-2);

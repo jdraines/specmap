@@ -167,7 +167,7 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
       <ReviewToolbar annotations={allAnnotations} files={files} annotationsByFile={annotationsByFile} />
       <div className="flex gap-4">
         {fileTreeOpen && (
-          <div className="w-[240px] flex-shrink-0 sticky top-0 self-start max-h-[calc(100vh-64px)] overflow-y-auto bg-[var(--surface-1)] border border-[var(--border)]">
+          <div className="w-[240px] flex-shrink-0 sticky top-0 self-start bg-[var(--surface-1)] border border-[var(--border)]">
             <FileTree
               files={files}
               annotationsByFile={annotationsByFile}

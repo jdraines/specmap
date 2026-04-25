@@ -214,6 +214,13 @@ def serve(
         _open_browser_when_ready(url)
 
     if reload:
+        # Stash config values as env vars so the factory can reconstruct
+        # the config when uvicorn reloads the process.
+        os.environ["PORT"] = str(config.port)
+        os.environ["HOST"] = config.host
+        os.environ["DATABASE_PATH"] = config.database_path
+        if config.static_dir:
+            os.environ["STATIC_DIR"] = config.static_dir
         uvicorn.run(
             "specmap.server.app:create_app",
             factory=True,

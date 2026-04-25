@@ -168,6 +168,17 @@ def user_config_path() -> Path:
     return base / "specmap" / "config.toml"
 
 
+def user_data_path() -> Path:
+    """Return $XDG_DATA_HOME/specmap/ (default ~/.local/share/specmap/).
+
+    Used as fallback storage for annotations and walkthroughs when
+    the server is not running from within the target repository.
+    """
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return base / "specmap"
+
+
 def repo_config_path(repo_root: str) -> Path:
     """Return <repo>/.specmap/config.toml."""
     return Path(repo_root) / ".specmap" / "config.toml"

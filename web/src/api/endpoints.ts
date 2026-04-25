@@ -1,4 +1,5 @@
-import { apiFetch, apiFetchSSE } from './client';
+import { apiFetch, apiFetchSSE, apiFetchChatSSE } from './client';
+import type { ChatSSECallbacks } from './client';
 import type {
   User,
   Repository,
@@ -97,7 +98,7 @@ export const capabilities = {
 };
 
 export const walkthrough = {
-  generate: (fullName: string, number: number, familiarity: number, depth: string, timeout: number = 300) =>
+  generate: (fullName: string, number: number, familiarity: number, depth: string, timeout: number = 300, signal?: AbortSignal) =>
     apiFetch<Walkthrough>(
       `/api/v1/repos/${fullName}/pulls/${number}/walkthrough`,
       {
@@ -105,5 +106,20 @@ export const walkthrough = {
         body: JSON.stringify({ familiarity, depth }),
       },
       timeout * 1000 + 60_000,
+      signal,
+    ),
+  chat: (
+    fullName: string,
+    number: number,
+    stepNumber: number,
+    message: string,
+    familiarity: number,
+    depth: string,
+    callbacks: ChatSSECallbacks,
+  ) =>
+    apiFetchChatSSE(
+      `/api/v1/repos/${fullName}/pulls/${number}/walkthrough/chat`,
+      { step_number: stepNumber, message, familiarity, depth },
+      callbacks,
     ),
 };

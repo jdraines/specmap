@@ -8,14 +8,17 @@ import { useAuthStore } from '../stores/authStore';
 const PAGE_SIZE = 20;
 const DEBOUNCE_MS = 300;
 
+// Track whether the initial auto-redirect has fired across mounts,
+// so navigating back to the dashboard doesn't redirect again.
+let _initialRedirectDone = false;
+
 export function DashboardPage() {
   const currentRepo = useAuthStore((s) => s.currentRepo);
   const navigate = useNavigate();
-  const redirected = useRef(false);
 
   useEffect(() => {
-    if (currentRepo && !redirected.current) {
-      redirected.current = true;
+    if (currentRepo && !_initialRedirectDone) {
+      _initialRedirectDone = true;
       navigate(`/r/${currentRepo}`, { replace: true });
     }
   }, [currentRepo, navigate]);

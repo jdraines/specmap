@@ -1,10 +1,13 @@
 import type { WalkthroughStep } from '../../api/types';
 import { useWalkthroughStore } from '../../stores/walkthroughStore';
 import { SpecBadge } from '../diff/SpecBadge';
+import { StepChat } from './StepChat';
 
 interface WalkthroughStepCardProps {
   step: WalkthroughStep;
   totalSteps: number;
+  fullName: string;
+  prNumber: number;
 }
 
 export function renderTextWithBold(text: string, keyPrefix: string): React.ReactNode[] {
@@ -42,7 +45,7 @@ function renderNarrative(text: string): React.ReactNode[] {
   return nodes;
 }
 
-export function WalkthroughStepCard({ step, totalSteps }: WalkthroughStepCardProps) {
+export function WalkthroughStepCard({ step, totalSteps, fullName, prNumber }: WalkthroughStepCardProps) {
   const { nextStep, prevStep, exit, currentStep } = useWalkthroughStore();
 
   return (
@@ -95,6 +98,8 @@ export function WalkthroughStepCard({ step, totalSteps }: WalkthroughStepCardPro
           Next
         </button>
       </div>
+
+      <StepChat step={step} fullName={fullName} prNumber={prNumber} />
     </div>
   );
 }

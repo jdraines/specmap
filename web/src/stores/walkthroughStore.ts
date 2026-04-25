@@ -1,9 +1,15 @@
 import { create } from 'zustand';
-import type { Walkthrough } from '../api/types';
+import type { ChatMessage, Walkthrough } from '../api/types';
 import { walkthrough as walkthroughApi, capabilities } from '../api/endpoints';
 
 function walkthroughKey(f: number, d: string): string {
   return `f${f}.${d}`;
+}
+
+interface ToolCallInfo {
+  tool: string;
+  args: unknown;
+  result?: string;
 }
 
 interface WalkthroughState {
@@ -18,10 +24,18 @@ interface WalkthroughState {
   timeout: number; // seconds
   available: boolean; // from capabilities
 
+  // Chat state
+  chatExpanded: Record<number, boolean>; // step_number → expanded
+  chatStreaming: number | null; // step currently streaming, or null
+  chatStreamContent: string; // accumulating response text
+  chatToolCalls: ToolCallInfo[]; // tool calls in progress
+  chatError: string | null;
+
   setFamiliarity: (f: number) => void;
   setDepth: (d: 'quick' | 'thorough') => void;
   setTimeout: (t: number) => void;
   generate: (fullName: string, number: number) => Promise<void>;
+  cancelGenerate: () => void;
   start: () => void;
   exit: () => void;
   nextStep: () => void;
@@ -29,6 +43,8 @@ interface WalkthroughState {
   goToStep: (step: number) => void;
   checkAvailable: () => Promise<void>;
   reset: () => void;
+  toggleChat: (stepNumber: number) => void;
+  sendMessage: (fullName: string, prNumber: number, stepNumber: number, message: string) => Promise<void>;
 }
 
 function loadStorage<T>(key: string, fallback: T): T {
@@ -51,6 +67,13 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   depth: loadStorage('specmap-wt-depth', 'quick'),
   timeout: loadStorage('specmap-wt-timeout', 300),
   available: false,
+
+  // Chat state
+  chatExpanded: {},
+  chatStreaming: null,
+  chatStreamContent: '',
+  chatToolCalls: [],
+  chatError: null,
 
   setFamiliarity: (f) => {
     localStorage.setItem('specmap-wt-familiarity', JSON.stringify(f));
@@ -82,15 +105,21 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
       // the server will return instantly if head_sha matches.
     }
 
+    const controller = new AbortController();
+    (get() as any)._generateController = controller;
     set({ loading: true, error: null });
     try {
-      const wt = await walkthroughApi.generate(fullName, number, familiarity, depth, timeout);
+      const wt = await walkthroughApi.generate(fullName, number, familiarity, depth, timeout, controller.signal);
       set((state) => ({
         walkthrough: wt,
         loading: false,
         cache: { ...state.cache, [key]: wt },
       }));
     } catch (e) {
+      if (controller.signal.aborted) {
+        set({ loading: false, error: null });
+        return;
+      }
       let msg: string;
       if (e instanceof DOMException && e.name === 'AbortError') {
         msg = "Generation timed out — the PR may be too large. Try 'quick' depth or increase timeout.";
@@ -98,7 +127,17 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
         msg = e instanceof Error ? e.message : 'Failed to generate walkthrough';
       }
       set({ error: msg, loading: false });
+    } finally {
+      (get() as any)._generateController = null;
     }
+  },
+
+  cancelGenerate: () => {
+    const controller = (get() as any)._generateController as AbortController | null;
+    if (controller) {
+      controller.abort();
+    }
+    set({ loading: false, error: null });
   },
 
   start: () => set({ active: true, currentStep: 0 }),
@@ -143,5 +182,86 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
       currentStep: 0,
       loading: false,
       error: null,
+      chatExpanded: {},
+      chatStreaming: null,
+      chatStreamContent: '',
+      chatToolCalls: [],
+      chatError: null,
     }),
+
+  toggleChat: (stepNumber) => {
+    const { chatExpanded } = get();
+    set({ chatExpanded: { ...chatExpanded, [stepNumber]: !chatExpanded[stepNumber] } });
+  },
+
+  sendMessage: async (fullName, prNumber, stepNumber, message) => {
+    const { walkthrough, familiarity, depth, chatExpanded } = get();
+    if (!walkthrough) return;
+
+    // Find the step and add user message optimistically
+    const stepIdx = walkthrough.steps.findIndex((s) => s.step_number === stepNumber);
+    if (stepIdx === -1) return;
+
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString(),
+    };
+
+    const updatedSteps = [...walkthrough.steps];
+    const updatedStep = { ...updatedSteps[stepIdx] };
+    updatedStep.chat = [...(updatedStep.chat ?? []), userMsg];
+    updatedSteps[stepIdx] = updatedStep;
+
+    set({
+      walkthrough: { ...walkthrough, steps: updatedSteps },
+      chatExpanded: { ...chatExpanded, [stepNumber]: true },
+      chatStreaming: stepNumber,
+      chatStreamContent: '',
+      chatToolCalls: [],
+      chatError: null,
+    });
+
+    try {
+      await walkthroughApi.chat(fullName, prNumber, stepNumber, message, familiarity, depth, {
+        onDelta: (content) => {
+          set((state) => ({ chatStreamContent: state.chatStreamContent + content }));
+        },
+        onToolCall: (tool, args) => {
+          set((state) => ({
+            chatToolCalls: [...state.chatToolCalls, { tool, args }],
+          }));
+        },
+        onToolResult: (tool, summary) => {
+          set((state) => ({
+            chatToolCalls: state.chatToolCalls.map((tc) =>
+              tc.tool === tool && !tc.result ? { ...tc, result: summary } : tc,
+            ),
+          }));
+        },
+        onDone: (asstMsg) => {
+          const current = get().walkthrough;
+          if (!current) return;
+          const steps = [...current.steps];
+          const idx = steps.findIndex((s) => s.step_number === stepNumber);
+          if (idx === -1) return;
+          const step = { ...steps[idx] };
+          step.chat = [...(step.chat ?? []), asstMsg];
+          steps[idx] = step;
+          set({
+            walkthrough: { ...current, steps },
+            chatStreaming: null,
+            chatStreamContent: '',
+            chatToolCalls: [],
+          });
+        },
+        onError: (msg) => {
+          set({ chatStreaming: null, chatStreamContent: '', chatToolCalls: [], chatError: msg });
+        },
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Chat failed';
+      set({ chatStreaming: null, chatStreamContent: '', chatToolCalls: [], chatError: msg });
+    }
+  },
 }));
