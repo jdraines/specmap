@@ -92,6 +92,12 @@ export interface AuthStatus {
   current_repo?: string;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
 export interface WalkthroughStep {
   step_number: number;
   title: string;
@@ -100,6 +106,7 @@ export interface WalkthroughStep {
   start_line: number | null;
   end_line: number | null;
   refs: SpecRef[];
+  chat?: ChatMessage[];
 }
 
 export interface Walkthrough {

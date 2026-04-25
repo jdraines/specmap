@@ -55,4 +55,16 @@ refractor.register(tsx);
 refractor.register(typescript);
 refractor.register(yaml);
 
-export { refractor };
+// react-diff-view's tokenize expects refractor.highlight() to return
+// an array of nodes (refractor v2/v3 format), but refractor v5 returns
+// a root object {type: 'root', children: [...]}. Wrap highlight to
+// unwrap the root and return just the children array.
+const wrappedRefractor = {
+  ...refractor,
+  highlight(code: string, language: string) {
+    const result = refractor.highlight(code, language);
+    return result.children;
+  },
+};
+
+export { wrappedRefractor as refractor };

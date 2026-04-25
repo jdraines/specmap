@@ -109,7 +109,7 @@ export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, wa
       {regularFiles.map((file, index) => (
         <div key={file.filename}>
           {walkthroughStep?.file === file.filename && walkthroughTotalSteps && (
-            <WalkthroughStepCard step={walkthroughStep} totalSteps={walkthroughTotalSteps} />
+            <WalkthroughStepCard step={walkthroughStep} totalSteps={walkthroughTotalSteps} fullName={fullName} prNumber={prNumber} />
           )}
           {renderFile(file, annotationsByFile, threadsByFile, mode, specmapFiles.length + index, fullName, prNumber)}
         </div>

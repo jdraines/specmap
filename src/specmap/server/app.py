@@ -19,7 +19,18 @@ from fastapi.responses import JSONResponse
 from starlette.responses import StreamingResponse
 
 from specmap import __version__
-from specmap.config import SpecmapConfig, save_user_config, user_config_path, _load_toml
+from specmap.config import SpecmapConfig, save_user_config, user_config_path, user_data_path, _load_toml
+from pydantic_ai.messages import (
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
+    PartDeltaEvent,
+    PartStartEvent,
+    TextPart,
+    TextPartDelta,
+)
+
+from specmap.llm.chat_agent import ChatDeps, chat_agent
+from specmap.llm.chat_prompts import build_chat_messages
 from specmap.llm.client import LLMClient
 from specmap.llm.walkthrough_prompts import build_walkthrough_prompt
 from specmap.llm.walkthrough_schemas import WalkthroughResponse
@@ -53,7 +64,9 @@ def _build_provider(provider_name: str, base_url: str, config: ServerConfig) -> 
     return GitHubProvider()
 
 
-def create_app(config: ServerConfig) -> FastAPI:
+def create_app(config: ServerConfig | None = None) -> FastAPI:
+    if config is None:
+        config = ServerConfig.from_env()
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         db_dir = os.path.dirname(config.database_path)
@@ -248,9 +261,21 @@ def create_app(config: ServerConfig) -> FastAPI:
     def _file_mgr() -> SpecmapFileManager:
         return SpecmapFileManager(".")
 
+    def _user_file_mgr(request: Request, owner: str, repo: str) -> SpecmapFileManager:
+        """File manager for user-level fallback storage (~/.local/share/specmap/)."""
+        provider_name = _provider(request).name
+        root = user_data_path() / "repos" / provider_name / owner / repo
+        return SpecmapFileManager(str(root))
+
+    def _get_file_mgr(request: Request, owner: str, repo: str) -> SpecmapFileManager:
+        """Return the local file manager if in-repo, otherwise the user-level fallback."""
+        if _is_local(request, owner, repo):
+            return _file_mgr()
+        return _user_file_mgr(request, owner, repo)
+
     async def _load_annotations(request: Request, provider: ForgeProvider, token: str,
                                 owner: str, repo: str, branch: str, head_sha: str) -> dict:
-        """Load annotations: forge API first, local file fallback, newest wins."""
+        """Load annotations: forge API → local .specmap/ → user data dir, newest wins."""
         remote_data = None
         sanitized = _safe_branch(branch)
         specmap_path = f".specmap/{sanitized}.json"
@@ -262,13 +287,21 @@ def create_app(config: ServerConfig) -> FastAPI:
         except (ForgeNotFound, json.JSONDecodeError, UnicodeDecodeError):
             pass
 
+        # Check local repo .specmap/ and user data dir
         local_data = None
-        is_local = _is_local(request, owner, repo)
-        if is_local:
-            mgr = _file_mgr()
+        candidates: list[SpecmapFileManager] = []
+        if _is_local(request, owner, repo):
+            candidates.append(_file_mgr())
+        candidates.append(_user_file_mgr(request, owner, repo))
+
+        for mgr in candidates:
             local_specmap = mgr.load(branch)
             if local_specmap.annotations:
-                local_data = json.loads(local_specmap.model_dump_json())
+                candidate_data = json.loads(local_specmap.model_dump_json())
+                if local_data is None:
+                    local_data = candidate_data
+                elif candidate_data.get("updated_at", "") > local_data.get("updated_at", ""):
+                    local_data = candidate_data
 
         if remote_data and local_data:
             r_time = remote_data.get("updated_at", "")
@@ -279,7 +312,7 @@ def create_app(config: ServerConfig) -> FastAPI:
     async def _load_walkthrough(request: Request, provider: ForgeProvider, token: str,
                                 owner: str, repo: str, branch: str, head_sha: str,
                                 familiarity: int, depth: str) -> dict | None:
-        """Load walkthrough: forge API first, local file fallback, newest wins."""
+        """Load walkthrough: forge API → local .specmap/ → user data dir, newest wins."""
         remote_data = None
         sanitized = _safe_branch(branch)
         wt_path = f".specmap/{sanitized}.walkthrough.f{familiarity}.{depth}.json"
@@ -291,13 +324,21 @@ def create_app(config: ServerConfig) -> FastAPI:
         except (ForgeNotFound, json.JSONDecodeError, UnicodeDecodeError):
             pass
 
+        # Check local repo .specmap/ and user data dir
         local_data = None
-        is_local = _is_local(request, owner, repo)
-        if is_local:
-            mgr = _file_mgr()
+        candidates: list[SpecmapFileManager] = []
+        if _is_local(request, owner, repo):
+            candidates.append(_file_mgr())
+        candidates.append(_user_file_mgr(request, owner, repo))
+
+        for mgr in candidates:
             local_wt = mgr.load_walkthrough(branch, familiarity, depth)
             if local_wt:
-                local_data = json.loads(local_wt.model_dump_json())
+                candidate_data = json.loads(local_wt.model_dump_json())
+                if local_data is None:
+                    local_data = candidate_data
+                elif candidate_data.get("updated_at", "") > local_data.get("updated_at", ""):
+                    local_data = candidate_data
 
         if remote_data and local_data:
             r_time = remote_data.get("updated_at", "")
@@ -955,16 +996,15 @@ def create_app(config: ServerConfig) -> FastAPI:
             while True:
                 event_type, data = await progress_queue.get()
                 if event_type == "complete":
-                    # Write to local file if running in the repo
-                    if _is_local(request, owner, repo):
-                        try:
-                            sf = SpecmapFileModel.model_validate(data)
-                            sf.branch = branch
-                            sf.updated_by = "server:generate"
-                            path = _file_mgr().save(sf)
-                            logger.info("Saved annotations to %s", path)
-                        except Exception as e:
-                            logger.error("Failed to save annotations to .specmap/: %s", e)
+                    # Persist annotations
+                    try:
+                        sf = SpecmapFileModel.model_validate(data)
+                        sf.branch = branch
+                        sf.updated_by = "server:generate"
+                        path = _get_file_mgr(request, owner, repo).save(sf)
+                        logger.info("Saved annotations to %s", path)
+                    except Exception as e:
+                        logger.error("Failed to save annotations: %s", e)
                     yield _sse("complete", data)
                     break
                 elif event_type == "error":
@@ -991,9 +1031,8 @@ def create_app(config: ServerConfig) -> FastAPI:
         p = await provider.get_pull(_http(request), token, owner, repo, number)
         branch = p["head_branch"]
 
-        # Delete local files if running in the repo
-        if _is_local(request, owner, repo):
-            _file_mgr().delete_files(branch)
+        # Delete cached files
+        _get_file_mgr(request, owner, repo).delete_files(branch)
 
         return {"status": "cleared"}
 
@@ -1076,12 +1115,11 @@ def create_app(config: ServerConfig) -> FastAPI:
                         head_sha, db_pull["head_branch"], db_pull["base_branch"],
                         config=cfg.core,
                     )
-                # Write generated annotations to local file
-                if _is_local(request, owner, repo):
-                    sf = SpecmapFileModel.model_validate(specmap_data)
-                    sf.branch = branch
-                    sf.updated_by = "server:generate"
-                    _file_mgr().save(sf)
+                # Persist generated annotations
+                sf = SpecmapFileModel.model_validate(specmap_data)
+                sf.branch = branch
+                sf.updated_by = "server:generate"
+                _get_file_mgr(request, owner, repo).save(sf)
                 annotations_list = specmap_data.get("annotations", [])
             except Exception:
                 pass
@@ -1161,12 +1199,248 @@ def create_app(config: ServerConfig) -> FastAPI:
             "updated_by": "server:generate",
         }
 
-        # Write to local file if running in the repo
-        if _is_local(request, owner, repo):
-            wf = WalkthroughFile.model_validate(walkthrough_data)
-            _file_mgr().save_walkthrough(wf)
+        # Persist walkthrough
+        wf = WalkthroughFile.model_validate(walkthrough_data)
+        _get_file_mgr(request, owner, repo).save_walkthrough(wf)
 
         return walkthrough_data
+
+    # --- Walkthrough Chat ---
+
+    def _build_chat_model(core_config):
+        """Build a pydantic-ai Model from CoreConfig.
+
+        Handles mapping litellm-style model strings (e.g. 'anthropic/claude-sonnet-4-20250514')
+        to pydantic-ai's provider system.
+        """
+        model_str = core_config.model
+        api_key = core_config.api_key
+        api_base = core_config.api_base
+
+        # Custom base URL → use OpenAI-compatible provider
+        if api_base:
+            from pydantic_ai.providers.openai import OpenAIProvider
+            from pydantic_ai.models.openai import OpenAIModel
+            # Strip any provider prefix for the model name
+            model_name = model_str.split("/", 1)[-1] if "/" in model_str else model_str
+            return OpenAIModel(model_name, provider=OpenAIProvider(
+                api_key=api_key, base_url=api_base,
+            ))
+
+        # litellm uses 'anthropic/model-name' prefix
+        if model_str.startswith("anthropic/"):
+            from pydantic_ai.providers.anthropic import AnthropicProvider
+            from pydantic_ai.models.anthropic import AnthropicModel
+            model_name = model_str.split("/", 1)[1]
+            return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
+
+        # OpenAI models (gpt-4o, etc.) — no prefix or 'openai/' prefix
+        if model_str.startswith("openai/"):
+            model_name = model_str.split("/", 1)[1]
+        else:
+            model_name = model_str
+
+        from pydantic_ai.providers.openai import OpenAIProvider
+        from pydantic_ai.models.openai import OpenAIModel
+        return OpenAIModel(model_name, provider=OpenAIProvider(api_key=api_key))
+
+    async def _handle_walkthrough_chat(request: Request, owner: str, repo: str, number: int):
+        cfg = _cfg(request)
+        if not cfg.core.api_key:
+            raise HTTPError(503, "LLM not configured. Set SPECMAP_API_KEY.")
+
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+
+        body = await request.json()
+        step_number = body.get("step_number")
+        message = body.get("message", "").strip()
+        familiarity = body.get("familiarity", 2)
+        depth = body.get("depth", "quick")
+
+        if not step_number or not message:
+            raise HTTPError(400, "step_number and message are required")
+
+        # Fetch PR info
+        p = await provider.get_pull(_http(request), token, owner, repo, number)
+        branch = p["head_branch"]
+        head_sha = p["head_sha"]
+
+        # Load existing walkthrough
+        wt_data = await _load_walkthrough(
+            request, provider, token, owner, repo,
+            branch, head_sha, familiarity, depth,
+        )
+        if not wt_data:
+            raise HTTPError(404, "No walkthrough found. Generate one first.")
+
+        steps = wt_data.get("steps", [])
+        step_idx = next(
+            (i for i, s in enumerate(steps) if s.get("step_number") == step_number),
+            None,
+        )
+        if step_idx is None:
+            raise HTTPError(404, f"Step {step_number} not found")
+
+        step = steps[step_idx]
+
+        # Append user message and persist immediately
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        user_msg = {"role": "user", "content": message, "timestamp": now}
+        if "chat" not in step:
+            step["chat"] = []
+        step["chat"].append(user_msg)
+
+        wf = WalkthroughFile.model_validate(wt_data)
+        _get_file_mgr(request, owner, repo).save_walkthrough(wf)
+
+        # Load annotations for context
+        specmap_data = await _load_annotations(
+            request, provider, token, owner, repo, branch, head_sha,
+        )
+        annotations_list = specmap_data.get("annotations", []) if specmap_data else []
+
+        # Fetch current step's file patch and source
+        file_patch = None
+        file_source = None
+        step_file = step.get("file", "")
+        if step_file:
+            # Get patch from PR files
+            try:
+                pr_files = await provider.list_pull_files(
+                    _http(request), token, owner, repo, number,
+                )
+                for pf in pr_files:
+                    if pf["filename"] == step_file:
+                        file_patch = pf.get("patch", "")
+                        break
+            except Exception:
+                pass
+
+            # Get source content around the step's focus range
+            try:
+                raw = await provider.get_file_content(
+                    _http(request), token, owner, repo, step_file, head_sha,
+                )
+                source_lines = raw.decode("utf-8", errors="replace").splitlines()
+                sl = step.get("start_line", 0)
+                el = step.get("end_line", 0)
+                if sl and el:
+                    ctx_start = max(sl - 51, 0)
+                    ctx_end = min(el + 50, len(source_lines))
+                    excerpt = source_lines[ctx_start:ctx_end]
+                    numbered = [f"{i}: {line}" for i, line in enumerate(excerpt, ctx_start + 1)]
+                    file_source = "\n".join(numbered)
+                elif len(source_lines) <= 500:
+                    numbered = [f"{i}: {line}" for i, line in enumerate(source_lines, 1)]
+                    file_source = "\n".join(numbered)
+            except (ForgeNotFound, Exception):
+                pass
+
+        # Build chat messages (excluding the just-appended user message — it goes as user_prompt)
+        chat_history = step.get("chat", [])[:-1]  # all but the last (current) user message
+        messages = build_chat_messages(
+            pr_title=p.get("title", ""),
+            head_branch=p["head_branch"],
+            base_branch=p["base_branch"],
+            steps=steps,
+            current_step_number=step_number,
+            file_patch=file_patch,
+            file_source=file_source,
+            chat_history=chat_history,
+        )
+
+        # Changed files and patches for tools
+        changed_files = []
+        file_patches_map: dict[str, str] = {}
+        try:
+            pr_files_list = await provider.list_pull_files(
+                _http(request), token, owner, repo, number,
+            )
+            changed_files = [pf["filename"] for pf in pr_files_list]
+            file_patches_map = {
+                pf["filename"]: pf.get("patch", "")
+                for pf in pr_files_list
+                if pf.get("patch")
+            }
+        except Exception:
+            pass
+
+        # Build deps
+        deps = ChatDeps(
+            provider=provider,
+            http_client=_http(request),
+            token=token,
+            owner=owner,
+            repo=repo,
+            head_sha=head_sha,
+            annotations=annotations_list,
+            changed_files=changed_files,
+            file_patches=file_patches_map,
+        )
+
+        # Build pydantic-ai model
+        chat_model = _build_chat_model(cfg.core)
+
+        async def stream_chat():
+            full_content = ""
+            try:
+                async for event in chat_agent.run_stream_events(
+                    user_prompt=message,
+                    message_history=messages,
+                    model=chat_model,
+                    deps=deps,
+                ):
+                    if isinstance(event, PartStartEvent):
+                        if isinstance(event.part, TextPart) and event.part.content:
+                            # Add paragraph break between text segments (e.g. after tool calls)
+                            if full_content and not full_content.endswith("\n"):
+                                full_content += "\n\n"
+                                yield _sse("delta", {"content": "\n\n"})
+                            full_content += event.part.content
+                            yield _sse("delta", {"content": event.part.content})
+                    elif isinstance(event, PartDeltaEvent):
+                        if isinstance(event.delta, TextPartDelta):
+                            delta = event.delta.content_delta
+                            full_content += delta
+                            yield _sse("delta", {"content": delta})
+                    elif isinstance(event, FunctionToolCallEvent):
+                        yield _sse("tool_call", {
+                            "tool": event.part.tool_name,
+                            "args": event.part.args,
+                        })
+                    elif isinstance(event, FunctionToolResultEvent):
+                        # Summarize tool result (first 200 chars)
+                        result_content = event.result.content if hasattr(event.result, "content") else ""
+                        if isinstance(result_content, str):
+                            summary = result_content[:200]
+                        else:
+                            summary = str(result_content)[:200]
+                        yield _sse("tool_result", {
+                            "tool": event.result.tool_name if hasattr(event.result, "tool_name") else "",
+                            "summary": summary,
+                        })
+
+            except Exception as e:
+                yield _sse("error", {"message": str(e)})
+                return
+
+            # Persist assistant message
+            asst_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            asst_msg = {"role": "assistant", "content": full_content, "timestamp": asst_ts}
+            step["chat"].append(asst_msg)
+
+            wf = WalkthroughFile.model_validate(wt_data)
+            _get_file_mgr(request, owner, repo).save_walkthrough(wf)
+
+            yield _sse("done", {"message": asst_msg})
+
+        return StreamingResponse(
+            stream_chat(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # --- Catch-all repo route dispatcher ---
     # Supports nested namespaces (e.g. group/subgroup/project/pulls/42)
@@ -1233,6 +1507,8 @@ def create_app(config: ServerConfig) -> FastAPI:
             return await _handle_clear_cache(request, owner, name, number)
         if action == "walkthrough" and method == "POST":
             return await _handle_generate_walkthrough(request, owner, name, number)
+        if action == "walkthrough/chat" and method == "POST":
+            return await _handle_walkthrough_chat(request, owner, name, number)
         if action.startswith("specs/"):
             spec_path = _safe_spec_path(action[len("specs/"):])
             return await _handle_get_spec_content(request, owner, name, number, spec_path)
