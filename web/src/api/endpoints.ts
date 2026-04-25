@@ -9,6 +9,7 @@ import type {
   SpecContent,
   AuthStatus,
   Walkthrough,
+  CodeReview,
   Capabilities,
   GenerateProgress,
   PaginatedResponse,
@@ -120,6 +121,31 @@ export const walkthrough = {
     apiFetchChatSSE(
       `/api/v1/repos/${fullName}/pulls/${number}/walkthrough/chat`,
       { step_number: stepNumber, message, familiarity, depth },
+      callbacks,
+    ),
+};
+
+export const codeReview = {
+  generate: (fullName: string, number: number, maxIssues: number = 20, timeout: number = 300, signal?: AbortSignal) =>
+    apiFetch<CodeReview>(
+      `/api/v1/repos/${fullName}/pulls/${number}/code-review`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ max_issues: maxIssues }),
+      },
+      timeout * 1000 + 60_000,
+      signal,
+    ),
+  chat: (
+    fullName: string,
+    number: number,
+    issueNumber: number,
+    message: string,
+    callbacks: ChatSSECallbacks,
+  ) =>
+    apiFetchChatSSE(
+      `/api/v1/repos/${fullName}/pulls/${number}/code-review/chat`,
+      { issue_number: issueNumber, message },
       callbacks,
     ),
 };

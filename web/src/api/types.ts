@@ -118,9 +118,30 @@ export interface Walkthrough {
   generated_at: string;
 }
 
+export interface CodeReviewIssue {
+  issue_number: number;
+  severity: string;
+  title: string;
+  description: string;
+  file: string;
+  start_line: number | null;
+  end_line: number | null;
+  suggested_fix: string;
+  category: string;
+  chat?: ChatMessage[];
+}
+
+export interface CodeReview {
+  summary: string;
+  issues: CodeReviewIssue[];
+  head_sha: string;
+  generated_at: string;
+}
+
 export interface Capabilities {
   walkthrough: boolean;
   annotations: boolean;
+  code_review: boolean;
 }
 
 export interface PaginatedResponse<T> {

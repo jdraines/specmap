@@ -30,6 +30,8 @@ from pydantic_ai.messages import (
 )
 
 from specmap.llm.chat_agent import ChatDeps, chat_agent
+from specmap.llm.code_review_agent import CodeReviewDeps, code_review_agent
+from specmap.llm.code_review_prompts import build_code_review_prompt
 from specmap.llm.chat_prompts import build_chat_messages
 from specmap.llm.client import LLMClient
 from specmap.llm.walkthrough_prompts import build_walkthrough_prompt
@@ -49,7 +51,7 @@ from specmap.server.generate import generate_full, generate_lite
 from specmap.server.github import GitHubProvider
 from specmap.server.gitlab import GitLabProvider
 from specmap.server.spa import mount_spa
-from specmap.state.models import SpecmapFile as SpecmapFileModel, WalkthroughFile
+from specmap.state.models import CodeReviewFile, SpecmapFile as SpecmapFileModel, WalkthroughFile
 from specmap.state.specmap_file import SpecmapFileManager, _ensure_gitignore
 
 logger = logging.getLogger("specmap.server")
@@ -571,7 +573,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     async def capabilities(request: Request):
         cfg = _cfg(request)
         has_llm = bool(cfg.core.api_key)
-        return {"walkthrough": has_llm, "annotations": has_llm}
+        return {"walkthrough": has_llm, "annotations": has_llm, "code_review": has_llm}
 
     # --- Data routes ---
 
@@ -1442,6 +1444,393 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    # --- Code Review ---
+
+    async def _load_code_review(request: Request, provider: ForgeProvider, token: str,
+                                owner: str, repo: str, branch: str, head_sha: str) -> dict | None:
+        """Load code review: forge API → local .specmap/ → user data dir, newest wins."""
+        remote_data = None
+        sanitized = _safe_branch(branch)
+        cr_path = f".specmap/{sanitized}.code-review.json"
+        try:
+            content = await provider.get_file_content(
+                _http(request), token, owner, repo, cr_path, head_sha
+            )
+            remote_data = json.loads(content)
+        except (ForgeNotFound, json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+        local_data = None
+        candidates: list[SpecmapFileManager] = []
+        if _is_local(request, owner, repo):
+            candidates.append(_file_mgr())
+        candidates.append(_user_file_mgr(request, owner, repo))
+
+        for mgr in candidates:
+            local_cr = mgr.load_code_review(branch)
+            if local_cr:
+                candidate_data = json.loads(local_cr.model_dump_json())
+                if local_data is None:
+                    local_data = candidate_data
+                elif candidate_data.get("updated_at", "") > local_data.get("updated_at", ""):
+                    local_data = candidate_data
+
+        if remote_data and local_data:
+            r_time = remote_data.get("updated_at", "")
+            l_time = local_data.get("updated_at", "")
+            return remote_data if r_time >= l_time else local_data
+        return remote_data or local_data
+
+    async def _handle_generate_code_review(request: Request, owner: str, repo: str, number: int):
+        cfg = _cfg(request)
+        if not cfg.core.api_key:
+            raise HTTPError(503, "LLM not configured. Set SPECMAP_API_KEY.")
+
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+
+        body = await request.json()
+        max_issues = body.get("max_issues", 20)
+
+        # Fetch PR
+        p = await provider.get_pull(_http(request), token, owner, repo, number)
+        branch = p["head_branch"]
+        head_sha = p["head_sha"]
+
+        # Check existing code review
+        existing_cr = await _load_code_review(
+            request, provider, token, owner, repo, branch, head_sha,
+        )
+        if existing_cr and existing_cr.get("head_sha") == head_sha:
+            return existing_cr
+
+        # Load annotations
+        specmap_data = await _load_annotations(
+            request, provider, token, owner, repo, branch, head_sha,
+        )
+        annotations_list = specmap_data.get("annotations", []) if specmap_data else []
+
+        # Fetch file patches
+        file_patches = await provider.list_pull_files(
+            _http(request), token, owner, repo, number,
+        )
+
+        # Collect spec files and fetch content
+        spec_files: set[str] = set()
+        for ann in annotations_list:
+            for ref in ann.get("refs", []):
+                sf = ref.get("spec_file", "")
+                if sf:
+                    spec_files.add(sf)
+
+        spec_contents: dict[str, str] = {}
+        for sf in spec_files:
+            try:
+                raw = await provider.get_file_content(
+                    _http(request), token, owner, repo, sf, head_sha,
+                )
+                spec_contents[sf] = raw.decode("utf-8", errors="replace")
+            except ForgeNotFound:
+                pass
+
+        # Build prompt
+        user_prompt = build_code_review_prompt(
+            pr_title=p.get("title", ""),
+            head_branch=p["head_branch"],
+            base_branch=p["base_branch"],
+            annotations=annotations_list,
+            file_patches=file_patches,
+            spec_contents=spec_contents,
+            max_issues=max_issues,
+        )
+
+        # Build deps for tools
+        changed_files = [fp["filename"] for fp in file_patches]
+        file_patches_map = {
+            fp["filename"]: fp.get("patch", "")
+            for fp in file_patches
+            if fp.get("patch")
+        }
+
+        deps = CodeReviewDeps(
+            provider=provider,
+            http_client=_http(request),
+            token=token,
+            owner=owner,
+            repo=repo,
+            head_sha=head_sha,
+            annotations=annotations_list,
+            changed_files=changed_files,
+            file_patches=file_patches_map,
+        )
+
+        chat_model = _build_chat_model(cfg.core)
+
+        # Run the agent with tools — blocks until complete
+        try:
+            result = await code_review_agent.run(
+                user_prompt=user_prompt,
+                model=chat_model,
+                deps=deps,
+            )
+            review_data = result.output
+        except Exception as e:
+            raise HTTPError(500, f"Code review generation failed: {e}")
+
+        # Build response
+        issues = []
+        for issue in review_data.issues:
+            issues.append({
+                "issue_number": issue.issue_number,
+                "severity": issue.severity,
+                "title": issue.title,
+                "description": issue.description,
+                "file": issue.file,
+                "start_line": issue.start_line or 0,
+                "end_line": issue.end_line or 0,
+                "suggested_fix": issue.suggested_fix,
+                "category": issue.category,
+            })
+
+        cr_data = {
+            "version": 1,
+            "branch": branch,
+            "summary": review_data.summary,
+            "issues": issues,
+            "head_sha": head_sha,
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S.%fZ"
+            ),
+            "updated_by": "server:generate",
+        }
+
+        # Persist
+        crf = CodeReviewFile.model_validate(cr_data)
+        _get_file_mgr(request, owner, repo).save_code_review(crf)
+
+        return cr_data
+
+    async def _handle_code_review_chat(request: Request, owner: str, repo: str, number: int):
+        cfg = _cfg(request)
+        if not cfg.core.api_key:
+            raise HTTPError(503, "LLM not configured. Set SPECMAP_API_KEY.")
+
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+
+        body = await request.json()
+        issue_number = body.get("issue_number")
+        message = body.get("message", "").strip()
+
+        if not issue_number or not message:
+            raise HTTPError(400, "issue_number and message are required")
+
+        # Fetch PR info
+        p = await provider.get_pull(_http(request), token, owner, repo, number)
+        branch = p["head_branch"]
+        head_sha = p["head_sha"]
+
+        # Load existing code review
+        cr_data = await _load_code_review(
+            request, provider, token, owner, repo, branch, head_sha,
+        )
+        if not cr_data:
+            raise HTTPError(404, "No code review found. Generate one first.")
+
+        issues = cr_data.get("issues", [])
+        issue_idx = next(
+            (i for i, iss in enumerate(issues) if iss.get("issue_number") == issue_number),
+            None,
+        )
+        if issue_idx is None:
+            raise HTTPError(404, f"Issue {issue_number} not found")
+
+        issue = issues[issue_idx]
+
+        # Append user message and persist
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        user_msg = {"role": "user", "content": message, "timestamp": now}
+        if "chat" not in issue:
+            issue["chat"] = []
+        issue["chat"].append(user_msg)
+
+        crf = CodeReviewFile.model_validate(cr_data)
+        _get_file_mgr(request, owner, repo).save_code_review(crf)
+
+        # Load annotations for context
+        specmap_data = await _load_annotations(
+            request, provider, token, owner, repo, branch, head_sha,
+        )
+        annotations_list = specmap_data.get("annotations", []) if specmap_data else []
+
+        # Fetch issue's file patch and source
+        file_patch = None
+        file_source = None
+        issue_file = issue.get("file", "")
+        if issue_file:
+            try:
+                pr_files = await provider.list_pull_files(
+                    _http(request), token, owner, repo, number,
+                )
+                for pf in pr_files:
+                    if pf["filename"] == issue_file:
+                        file_patch = pf.get("patch", "")
+                        break
+            except Exception:
+                pass
+
+            try:
+                raw = await provider.get_file_content(
+                    _http(request), token, owner, repo, issue_file, head_sha,
+                )
+                source_lines = raw.decode("utf-8", errors="replace").splitlines()
+                sl = issue.get("start_line", 0)
+                el = issue.get("end_line", 0)
+                if sl and el:
+                    ctx_start = max(sl - 51, 0)
+                    ctx_end = min(el + 50, len(source_lines))
+                    excerpt = source_lines[ctx_start:ctx_end]
+                    numbered = [f"{i}: {line}" for i, line in enumerate(excerpt, ctx_start + 1)]
+                    file_source = "\n".join(numbered)
+                elif len(source_lines) <= 500:
+                    numbered = [f"{i}: {line}" for i, line in enumerate(source_lines, 1)]
+                    file_source = "\n".join(numbered)
+            except (ForgeNotFound, Exception):
+                pass
+
+        # Build chat context — code review issue context instead of walkthrough steps
+        from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart as MTextPart, UserPromptPart
+
+        context_parts = [
+            f"## PR Overview\n**Title:** {p.get('title', '')}\n**Branch:** {p['head_branch']} → {p['base_branch']}\n",
+            f"## Code Review Summary\n{cr_data.get('summary', '')}\n",
+            "## All Issues\n",
+        ]
+        for iss in issues:
+            current = " ← CURRENT ISSUE" if iss.get("issue_number") == issue_number else ""
+            context_parts.append(
+                f"**{iss.get('severity', '?')} #{iss.get('issue_number', '?')}: "
+                f"{iss.get('title', '')}** [{iss.get('file', '')}]{current}\n"
+                f"{iss.get('description', '')[:200]}...\n"
+            )
+
+        context_parts.append("\n## Current Issue Details\n")
+        context_parts.append(f"**{issue.get('severity', '')} #{issue_number}: {issue.get('title', '')}**")
+        context_parts.append(f"**File:** {issue_file}")
+        if issue.get("start_line") and issue.get("end_line"):
+            context_parts.append(f"**Lines:** {issue['start_line']}-{issue['end_line']}")
+        context_parts.append(f"**Category:** {issue.get('category', '')}")
+        context_parts.append(f"**Description:** {issue.get('description', '')}")
+        if issue.get("suggested_fix"):
+            context_parts.append(f"**Suggested Fix:** {issue['suggested_fix']}")
+
+        if file_patch or file_source:
+            context_parts.append("\n## File Context\n")
+            if file_patch:
+                context_parts.append(f"### Diff\n```diff\n{file_patch}\n```\n")
+            if file_source:
+                context_parts.append(f"### Source\n```\n{file_source}\n```\n")
+
+        context_text = "\n".join(context_parts)
+
+        messages: list[ModelMessage] = [
+            ModelRequest(parts=[UserPromptPart(content=context_text)]),
+            ModelResponse(parts=[MTextPart(
+                content="I've reviewed the code review context. Feel free to ask about this issue."
+            )]),
+        ]
+
+        chat_history = issue.get("chat", [])[:-1]
+        for msg in chat_history:
+            if msg["role"] == "user":
+                messages.append(ModelRequest(parts=[UserPromptPart(content=msg["content"])]))
+            elif msg["role"] == "assistant":
+                messages.append(ModelResponse(parts=[MTextPart(content=msg["content"])]))
+
+        # Build deps and model
+        changed_files = []
+        file_patches_map: dict[str, str] = {}
+        try:
+            pr_files_list = await provider.list_pull_files(
+                _http(request), token, owner, repo, number,
+            )
+            changed_files = [pf["filename"] for pf in pr_files_list]
+            file_patches_map = {
+                pf["filename"]: pf.get("patch", "")
+                for pf in pr_files_list if pf.get("patch")
+            }
+        except Exception:
+            pass
+
+        deps = ChatDeps(
+            provider=provider,
+            http_client=_http(request),
+            token=token,
+            owner=owner,
+            repo=repo,
+            head_sha=head_sha,
+            annotations=annotations_list,
+            changed_files=changed_files,
+            file_patches=file_patches_map,
+        )
+
+        chat_model = _build_chat_model(cfg.core)
+
+        async def stream_chat():
+            full_content = ""
+            try:
+                async for event in chat_agent.run_stream_events(
+                    user_prompt=message,
+                    message_history=messages,
+                    model=chat_model,
+                    deps=deps,
+                ):
+                    if isinstance(event, PartStartEvent):
+                        if isinstance(event.part, TextPart) and event.part.content:
+                            if full_content and not full_content.endswith("\n"):
+                                full_content += "\n\n"
+                                yield _sse("delta", {"content": "\n\n"})
+                            full_content += event.part.content
+                            yield _sse("delta", {"content": event.part.content})
+                    elif isinstance(event, PartDeltaEvent):
+                        if isinstance(event.delta, TextPartDelta):
+                            delta = event.delta.content_delta
+                            full_content += delta
+                            yield _sse("delta", {"content": delta})
+                    elif isinstance(event, FunctionToolCallEvent):
+                        yield _sse("tool_call", {
+                            "tool": event.part.tool_name,
+                            "args": event.part.args,
+                        })
+                    elif isinstance(event, FunctionToolResultEvent):
+                        result_content = event.result.content if hasattr(event.result, "content") else ""
+                        summary = str(result_content)[:200] if result_content else ""
+                        yield _sse("tool_result", {
+                            "tool": event.result.tool_name if hasattr(event.result, "tool_name") else "",
+                            "summary": summary,
+                        })
+
+            except Exception as e:
+                yield _sse("error", {"message": str(e)})
+                return
+
+            asst_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            asst_msg = {"role": "assistant", "content": full_content, "timestamp": asst_ts}
+            issue["chat"].append(asst_msg)
+
+            crf = CodeReviewFile.model_validate(cr_data)
+            _get_file_mgr(request, owner, repo).save_code_review(crf)
+
+            yield _sse("done", {"message": asst_msg})
+
+        return StreamingResponse(
+            stream_chat(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     # --- Catch-all repo route dispatcher ---
     # Supports nested namespaces (e.g. group/subgroup/project/pulls/42)
 
@@ -1509,6 +1898,10 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             return await _handle_generate_walkthrough(request, owner, name, number)
         if action == "walkthrough/chat" and method == "POST":
             return await _handle_walkthrough_chat(request, owner, name, number)
+        if action == "code-review" and method == "POST":
+            return await _handle_generate_code_review(request, owner, name, number)
+        if action == "code-review/chat" and method == "POST":
+            return await _handle_code_review_chat(request, owner, name, number)
         if action.startswith("specs/"):
             spec_path = _safe_spec_path(action[len("specs/"):])
             return await _handle_get_spec_content(request, owner, name, number, spec_path)

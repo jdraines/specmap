@@ -87,3 +87,30 @@ class WalkthroughFile(BaseModel):
     depth: str = "quick"
     summary: str = ""
     steps: list[WalkthroughStep] = Field(default_factory=list)
+
+
+class CodeReviewIssue(BaseModel):
+    """A single issue found during code review."""
+
+    issue_number: int
+    severity: str  # "P0", "P1", "P2", "P3", "P4"
+    title: str
+    description: str  # markdown
+    file: str
+    start_line: int = 0
+    end_line: int = 0
+    suggested_fix: str = ""  # markdown with code blocks
+    category: str = ""  # "correctness", "security", "performance", "style", "design"
+    chat: list[ChatMessage] = Field(default_factory=list)
+
+
+class CodeReviewFile(BaseModel):
+    """The .specmap/{branch}.code-review.json file."""
+
+    version: int = 1
+    branch: str = ""
+    head_sha: str = ""
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_by: str = "server:generate"
+    summary: str = ""
+    issues: list[CodeReviewIssue] = Field(default_factory=list)

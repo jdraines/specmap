@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import { parseDiff } from 'react-diff-view';
-import type { PullFile, Annotation, WalkthroughStep, CommentThread } from '../../api/types';
+import type { PullFile, Annotation, WalkthroughStep, CodeReviewIssue, CommentThread } from '../../api/types';
 import { useCommentStore } from '../../stores/commentStore';
 import { DiffFile } from './DiffFile';
 import { WalkthroughStepCard } from '../walkthrough/WalkthroughStepCard';
+import { CodeReviewIssueCard } from '../codereview/CodeReviewIssueCard';
 import 'react-diff-view/style/index.css';
 
 interface DiffViewerProps {
@@ -12,6 +13,8 @@ interface DiffViewerProps {
   mode: 'inline' | 'side';
   walkthroughStep?: WalkthroughStep | null;
   walkthroughTotalSteps?: number;
+  codeReviewIssue?: CodeReviewIssue | null;
+  codeReviewTotalIssues?: number;
   fullName: string;
   prNumber: number;
 }
@@ -65,7 +68,7 @@ function renderFile(
   );
 }
 
-export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, walkthroughTotalSteps, fullName, prNumber }: DiffViewerProps) {
+export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, walkthroughTotalSteps, codeReviewIssue, codeReviewTotalIssues, fullName, prNumber }: DiffViewerProps) {
   const [showSpecmap, setShowSpecmap] = useState(false);
   const threadsByFile = useCommentStore((s) => s.threadsByFile);
 
@@ -110,6 +113,9 @@ export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, wa
         <div key={file.filename}>
           {walkthroughStep?.file === file.filename && walkthroughTotalSteps && (
             <WalkthroughStepCard step={walkthroughStep} totalSteps={walkthroughTotalSteps} fullName={fullName} prNumber={prNumber} />
+          )}
+          {codeReviewIssue?.file === file.filename && codeReviewTotalIssues && (
+            <CodeReviewIssueCard issue={codeReviewIssue} totalIssues={codeReviewTotalIssues} fullName={fullName} prNumber={prNumber} />
           )}
           {renderFile(file, annotationsByFile, threadsByFile, mode, specmapFiles.length + index, fullName, prNumber)}
         </div>
