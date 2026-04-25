@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from specmap.state.models import SpecmapFile, WalkthroughFile
+from specmap.state.models import CodeReviewFile, SpecmapFile, WalkthroughFile
 
 
 def _ensure_gitignore(specmap_dir: Path) -> None:
@@ -161,11 +161,43 @@ class SpecmapFileManager:
         path.write_text(json_str, encoding="utf-8")
         return path
 
+    def _code_review_path(self, branch: str) -> Path:
+        """Get the path for a branch's code review file."""
+        sanitized = self._sanitize_branch(branch)
+        return self._specmap_dir() / f"{sanitized}.code-review.json"
+
+    def load_code_review(self, branch: str) -> CodeReviewFile | None:
+        """Load .specmap/{branch}.code-review.json. Returns None if not found."""
+        path = self._code_review_path(branch)
+        if not path.exists():
+            return None
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            return CodeReviewFile.model_validate(data)
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[specmap] Warning: failed to load {path}: {e}", file=sys.stderr)
+            return None
+
+    def save_code_review(self, data: CodeReviewFile) -> Path:
+        """Write to .specmap/{branch}.code-review.json with pretty JSON."""
+        self.ensure_dir()
+        data.updated_at = datetime.now(timezone.utc)
+
+        path = self._code_review_path(data.branch)
+        json_str = data.model_dump_json(indent=2)
+        path.write_text(json_str, encoding="utf-8")
+        return path
+
     def delete_files(self, branch: str) -> None:
         """Delete annotation and all walkthrough variant files for a branch."""
         self._file_path(branch).unlink(missing_ok=True)
         sanitized = self._sanitize_branch(branch)
-        for pat in (f"{sanitized}.walkthrough.f*.*.json", f"{sanitized}.walkthrough.json"):
+        for pat in (
+            f"{sanitized}.walkthrough.f*.*.json",
+            f"{sanitized}.walkthrough.json",
+            f"{sanitized}.code-review.json",
+        ):
             for path in self._specmap_dir().glob(pat):
                 try:
                     path.unlink(missing_ok=True)

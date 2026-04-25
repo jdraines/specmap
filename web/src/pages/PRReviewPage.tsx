@@ -5,6 +5,7 @@ import { useSpecPanelStore } from '../stores/specPanelStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useWalkthroughStore } from '../stores/walkthroughStore';
+import { useCodeReviewStore } from '../stores/codeReviewStore';
 import { useCommentStore } from '../stores/commentStore';
 import { useKeyboardNav } from '../hooks/useKeyboardNav';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
@@ -18,6 +19,8 @@ import { ConversationPanel } from '../components/comments/ConversationPanel';
 import { FileTree } from '../components/filetree/FileTree';
 import { WalkthroughBanner } from '../components/walkthrough/WalkthroughBanner';
 import { WalkthroughNav } from '../components/walkthrough/WalkthroughNav';
+import { CodeReviewBanner } from '../components/codereview/CodeReviewBanner';
+import { CodeReviewNav } from '../components/codereview/CodeReviewNav';
 
 function KeyboardHelpOverlay({ onClose, walkthroughActive }: { onClose: () => void; walkthroughActive: boolean }) {
   const shortcuts = [
@@ -79,10 +82,14 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
   const walkthroughActive = useWalkthroughStore((s) => s.active);
   const walkthroughData = useWalkthroughStore((s) => s.walkthrough);
   const walkthroughStep = useWalkthroughStore((s) => s.currentStep);
-  const checkAvailable = useWalkthroughStore((s) => s.checkAvailable);
+  const checkWalkthroughAvailable = useWalkthroughStore((s) => s.checkAvailable);
   const walkthroughExit = useWalkthroughStore((s) => s.exit);
   const walkthroughNextStep = useWalkthroughStore((s) => s.nextStep);
   const walkthroughPrevStep = useWalkthroughStore((s) => s.prevStep);
+  const codeReviewActive = useCodeReviewStore((s) => s.active);
+  const codeReviewData = useCodeReviewStore((s) => s.review);
+  const codeReviewIssueIdx = useCodeReviewStore((s) => s.currentIssue);
+  const checkCodeReviewAvailable = useCodeReviewStore((s) => s.checkAvailable);
   const fetchComments = useCommentStore((s) => s.fetchComments);
   const startPolling = useCommentStore((s) => s.startPolling);
   const stopPolling = useCommentStore((s) => s.stopPolling);
@@ -106,12 +113,13 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
     if (!fullName) return;
     fetchReview(fullName, prNumber);
     setContext(fullName, prNumber);
-    checkAvailable();
+    checkWalkthroughAvailable();
+    checkCodeReviewAvailable();
     checkCanGenerate();
     fetchComments(fullName, prNumber);
     startPolling(fullName, prNumber);
     return () => stopPolling();
-  }, [fullName, prNumber, fetchReview, setContext, checkAvailable, checkCanGenerate, fetchComments, startPolling, stopPolling]);
+  }, [fullName, prNumber, fetchReview, setContext, checkWalkthroughAvailable, checkCodeReviewAvailable, checkCanGenerate, fetchComments, startPolling, stopPolling]);
 
   // Preload spec files referenced by annotations and walkthrough
   useEffect(() => {
@@ -120,8 +128,29 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
     }
   }, [allAnnotations, walkthroughData, preloadSpecs]);
 
+  // Mutual exclusion: if both become active, exit the other
+  useEffect(() => {
+    if (walkthroughActive && codeReviewActive) {
+      // Walkthrough just became active, exit code review
+      useCodeReviewStore.getState().exit();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walkthroughActive]);
+
+  useEffect(() => {
+    if (codeReviewActive && walkthroughActive) {
+      // Code review just became active, exit walkthrough
+      useWalkthroughStore.getState().exit();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codeReviewActive]);
+
   const currentWalkthroughStep = walkthroughActive && walkthroughData
     ? walkthroughData.steps[walkthroughStep] ?? null
+    : null;
+
+  const currentCodeReviewIssue = codeReviewActive && codeReviewData
+    ? codeReviewData.issues[codeReviewIssueIdx] ?? null
     : null;
 
   // Scroll to walkthrough step card when step changes
@@ -133,6 +162,16 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [walkthroughActive, currentWalkthroughStep]);
+
+  // Scroll to code review issue card when issue changes
+  useEffect(() => {
+    if (!codeReviewActive || !currentCodeReviewIssue) return;
+    const issueNum = currentCodeReviewIssue.issue_number;
+    const el = document.querySelector(`[data-code-review-issue="${issueNum}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [codeReviewActive, currentCodeReviewIssue]);
 
   const { showHelp, setShowHelp } = useKeyboardNav({
     fileCount: files.length,
@@ -181,6 +220,10 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
             prNumber={prNumber}
             hasAnnotations={allAnnotations.length > 0}
           />
+          <CodeReviewBanner
+            fullName={fullName}
+            prNumber={prNumber}
+          />
           <WalkthroughBanner
             fullName={fullName}
             prNumber={prNumber}
@@ -193,6 +236,8 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
             mode={resolvedMode}
             walkthroughStep={currentWalkthroughStep}
             walkthroughTotalSteps={walkthroughData?.steps.length ?? 0}
+            codeReviewIssue={currentCodeReviewIssue}
+            codeReviewTotalIssues={codeReviewData?.issues.length ?? 0}
             fullName={fullName}
             prNumber={prNumber}
           />
@@ -201,6 +246,7 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
       <SpecPanel />
       <AnnotationNav annotations={allAnnotations} />
       <WalkthroughNav />
+      <CodeReviewNav />
       {showHelp && <KeyboardHelpOverlay onClose={() => setShowHelp(false)} walkthroughActive={walkthroughActive} />}
     </div>
   );
