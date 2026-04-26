@@ -1,5 +1,15 @@
 import { useCodeReviewStore } from '../../stores/codeReviewStore';
 
+// Colors for dots on the orange nav bar — need high contrast against orange
+const navDotColor: Record<string, string> = {
+  P0: '#fca5a5',  // light red
+  P1: '#fde68a',  // light amber
+  P2: '#d9f99d',  // light lime
+  P3: '#93c5fd',  // light blue
+  P4: '#e2e8f0',  // light gray
+};
+
+// Colors for severity badges in the title area
 const severityColor: Record<string, string> = {
   P0: 'var(--cr-p0)',
   P1: 'var(--cr-p1)',
@@ -23,12 +33,13 @@ export function CodeReviewNav() {
         {review.issues.map((iss, i) => (
           <div
             key={i}
-            className={`w-2 h-2 rounded-full cursor-pointer ${
-              i === currentIssue ? 'ring-1 ring-white ring-offset-1 ring-offset-[var(--cr-nav-bg)]' : ''
+            className={`w-2.5 h-2.5 rounded-full cursor-pointer border ${
+              i === currentIssue
+                ? 'border-white scale-125'
+                : 'border-black/20'
             }`}
             style={{
-              backgroundColor: severityColor[iss.severity] || 'var(--cr-nav-dot)',
-              opacity: i === currentIssue ? 1 : 0.7,
+              backgroundColor: navDotColor[iss.severity] || '#e2e8f0',
             }}
             onClick={() => useCodeReviewStore.getState().goToIssue(i)}
           />
