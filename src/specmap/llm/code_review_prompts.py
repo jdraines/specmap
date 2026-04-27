@@ -47,7 +47,9 @@ dead code left behind, inconsistent naming after rename.
 
 ## Output Guidelines
 
-- Each issue must target a specific file and ideally a line range
+- Every issue MUST include start_line and end_line pointing to specific lines in the diff. \
+Use the diff hunk headers (@@ -old,count +new,count @@) to identify new-file line numbers. \
+Only omit line numbers for truly file-level concerns (e.g. missing file, wrong filename)
 - Provide a concrete suggested fix with code when possible
 - Order: P0 first, then P1, etc. Within same severity, order for narrative flow
 - Be honest about severity — inflating severity undermines trust
@@ -63,6 +65,7 @@ def build_code_review_prompt(
     file_patches: list[dict],
     spec_contents: dict[str, str],
     max_issues: int = 20,
+    custom_prompt: str = "",
 ) -> str:
     """Build the user prompt for code review generation.
 
@@ -120,6 +123,14 @@ def build_code_review_prompt(
         + file_list
         + "\n"
     )
+
+    if custom_prompt:
+        parts.append(
+            "# Reviewer Instructions\n\n"
+            "The reviewer has provided additional guidance for this review:\n\n"
+            + custom_prompt
+            + "\n"
+        )
 
     parts.append(
         f"Review this PR. Find up to {max_issues} issues, ordered by severity. "

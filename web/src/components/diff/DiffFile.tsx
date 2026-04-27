@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Diff, Hunk, Decoration, getChangeKey, useSourceExpansion } from 'react-diff-view';
 import type { FileData, HunkData, ChangeData } from 'react-diff-view';
-import type { PullFile, Annotation, CommentThread as CommentThreadType } from '../../api/types';
+import type { PullFile, Annotation, CodeReviewIssue, CommentThread as CommentThreadType } from '../../api/types';
 import { pulls } from '../../api/endpoints';
 import { useSpecPanelStore } from '../../stores/specPanelStore';
 import { FileHeader } from './FileHeader';
@@ -10,6 +10,7 @@ import { SideAnnotation } from './SideAnnotation';
 import { HunkExpander } from './HunkExpander';
 import { InlineCommentWidget } from '../comments/InlineCommentWidget';
 import { NewCommentForm } from '../comments/NewCommentForm';
+import { CodeReviewIssueCard } from '../codereview/CodeReviewIssueCard';
 import { useAnnotationPositions } from '../../hooks/useAnnotationPositions';
 import { useAnnotationSpacers } from '../../hooks/useAnnotationSpacers';
 import { useSyntaxTokens } from '../../hooks/useSyntaxTokens';
@@ -23,7 +24,17 @@ interface DiffFileProps {
   fileIndex: number;
   fullName: string;
   prNumber: number;
+  codeReviewIssue?: CodeReviewIssue | null;
+  codeReviewTotalIssues?: number;
 }
+
+const severityColor: Record<string, string> = {
+  P0: 'var(--cr-p0)',
+  P1: 'var(--cr-p1)',
+  P2: 'var(--cr-p2)',
+  P3: 'var(--cr-p3)',
+  P4: 'var(--cr-p4)',
+};
 
 function findChangeForLine(hunks: HunkData[], line: number): ChangeData | null {
   for (const hunk of hunks) {
@@ -39,7 +50,7 @@ function findChangeForLine(hunks: HunkData[], line: number): ChangeData | null {
   return null;
 }
 
-export function DiffFile({ file, diffData, annotations, commentThreads, mode, fileIndex, fullName: propFullName, prNumber: propPrNumber }: DiffFileProps) {
+export function DiffFile({ file, diffData, annotations, commentThreads, mode, fileIndex, fullName: propFullName, prNumber: propPrNumber, codeReviewIssue, codeReviewTotalIssues }: DiffFileProps) {
   const storeFullName = useSpecPanelStore((s) => s.fullName);
   const storeNumber = useSpecPanelStore((s) => s.prNumber);
   const fullName = propFullName || storeFullName;
@@ -75,9 +86,21 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
     }
   });
 
-  // Auto-expand hunks so all annotation lines are visible
+  // Auto-expand hunks so all annotation and code review issue lines are visible
   useEffect(() => {
-    if (!annotations.length || isNewFile || annotationExpandDone.current) return;
+    // Collect all line ranges that need to be visible
+    const lineRanges: Array<{ start_line: number; end_line: number }> = [];
+    for (const ann of annotations) {
+      lineRanges.push({ start_line: ann.start_line, end_line: ann.end_line });
+    }
+    if (codeReviewIssue?.start_line != null) {
+      lineRanges.push({
+        start_line: codeReviewIssue.start_line,
+        end_line: codeReviewIssue.end_line ?? codeReviewIssue.start_line,
+      });
+    }
+
+    if (!lineRanges.length || isNewFile || annotationExpandDone.current) return;
 
     // Build set of visible new-file line numbers
     const visibleLines = new Set<number>();
@@ -91,10 +114,10 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
       }
     }
 
-    // Check if any annotation has lines outside visible hunks
+    // Check if any range has lines outside visible hunks
     let needsExpansion = false;
-    for (const ann of annotations) {
-      for (let line = ann.start_line; line <= ann.end_line; line++) {
+    for (const range of lineRanges) {
+      for (let line = range.start_line; line <= range.end_line; line++) {
         if (!visibleLines.has(line)) {
           needsExpansion = true;
           break;
@@ -127,14 +150,14 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
       }
     }
 
-    // Find expansion ranges for annotation lines in gaps
+    // Find expansion ranges for line ranges in gaps
     const expansions: Array<[number, number]> = [];
     for (const gap of gaps) {
       const offset = gap.oldStart - gap.newStart;
-      for (const ann of annotations) {
-        if (ann.start_line <= gap.newEnd && ann.end_line >= gap.newStart) {
-          const overlapStart = Math.max(ann.start_line, gap.newStart);
-          const overlapEnd = Math.min(ann.end_line, gap.newEnd);
+      for (const range of lineRanges) {
+        if (range.start_line <= gap.newEnd && range.end_line >= gap.newStart) {
+          const overlapStart = Math.max(range.start_line, gap.newStart);
+          const overlapEnd = Math.min(range.end_line, gap.newEnd);
           expansions.push([overlapStart + offset, overlapEnd + offset + 1]);
         }
       }
@@ -163,7 +186,7 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
       .catch(() => { pendingAnnotationExpansions.current = null; })
       .finally(() => setSourceLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [annotations, renderingHunks]);
+  }, [annotations, renderingHunks, codeReviewIssue]);
 
   const handleExpand = useCallback(
     async (start: number, end: number) => {
@@ -351,8 +374,31 @@ export function DiffFile({ file, diffData, annotations, commentThreads, mode, fi
       }
     }
 
+    // Code review issue widget — pinned to start_line
+    if (codeReviewIssue?.start_line != null && codeReviewTotalIssues) {
+      const change = findChangeForLine(renderingHunks, codeReviewIssue.start_line);
+      if (change) {
+        const key = getChangeKey(change);
+        const color = severityColor[codeReviewIssue.severity] || 'var(--cr-border)';
+        const widget = (
+          <div
+            className="diff-widget-code-review"
+            style={{ '--cr-issue-border-color': color } as React.CSSProperties}
+          >
+            <CodeReviewIssueCard
+              issue={codeReviewIssue}
+              totalIssues={codeReviewTotalIssues}
+              fullName={fullName || ''}
+              prNumber={number || 0}
+            />
+          </div>
+        );
+        w[key] = w[key] ? <>{w[key]}{widget}</> : widget;
+      }
+    }
+
     return { widgets: w, unmatchedAnnotations: unmatched };
-  }, [annotations, commentThreads, renderingHunks, mode, newCommentLine, fullName, number, file.filename]);
+  }, [annotations, commentThreads, renderingHunks, mode, newCommentLine, fullName, number, file.filename, codeReviewIssue, codeReviewTotalIssues]);
 
   const sideResult = useAnnotationPositions(annotations, renderingHunks, mode, containerRef);
 

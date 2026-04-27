@@ -15,7 +15,7 @@ class ReviewIssue(BaseModel):
     title: str  # Short heading
     description: str  # Markdown explanation of the issue
     file: str  # Target file path
-    start_line: int | None = None
+    start_line: int  # New-file line number from the diff
     end_line: int | None = None
     suggested_fix: str = ""  # Markdown with code blocks showing the fix
     category: str = ""  # "correctness", "security", "performance", "style", "design"

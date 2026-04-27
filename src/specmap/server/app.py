@@ -1027,7 +1027,6 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         claims = _get_current_user(request)
         token = _get_forge_token(request, claims)
         provider = _provider(request)
-        db = _db(request)
 
         # Get the branch name for this PR
         p = await provider.get_pull(_http(request), token, owner, repo, number)
@@ -1492,18 +1491,20 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
         body = await request.json()
         max_issues = body.get("max_issues", 20)
+        custom_prompt = body.get("custom_prompt", "")
 
         # Fetch PR
         p = await provider.get_pull(_http(request), token, owner, repo, number)
         branch = p["head_branch"]
         head_sha = p["head_sha"]
 
-        # Check existing code review
-        existing_cr = await _load_code_review(
-            request, provider, token, owner, repo, branch, head_sha,
-        )
-        if existing_cr and existing_cr.get("head_sha") == head_sha:
-            return existing_cr
+        # Check existing code review (skip cache if custom prompt provided)
+        if not custom_prompt:
+            existing_cr = await _load_code_review(
+                request, provider, token, owner, repo, branch, head_sha,
+            )
+            if existing_cr and existing_cr.get("head_sha") == head_sha:
+                return existing_cr
 
         # Load annotations
         specmap_data = await _load_annotations(
@@ -1543,6 +1544,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             file_patches=file_patches,
             spec_contents=spec_contents,
             max_issues=max_issues,
+            custom_prompt=custom_prompt,
         )
 
         # Build deps for tools

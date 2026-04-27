@@ -4,7 +4,6 @@ import type { PullFile, Annotation, WalkthroughStep, CodeReviewIssue, CommentThr
 import { useCommentStore } from '../../stores/commentStore';
 import { DiffFile } from './DiffFile';
 import { WalkthroughStepCard } from '../walkthrough/WalkthroughStepCard';
-import { CodeReviewIssueCard } from '../codereview/CodeReviewIssueCard';
 import 'react-diff-view/style/index.css';
 
 interface DiffViewerProps {
@@ -36,6 +35,8 @@ function renderFile(
   index: number,
   fullName: string,
   prNumber: number,
+  codeReviewIssue?: CodeReviewIssue | null,
+  codeReviewTotalIssues?: number,
 ) {
   const diffText = patchToUnifiedDiff(file.filename, file.patch);
   if (!diffText) {
@@ -64,6 +65,8 @@ function renderFile(
       fileIndex={index}
       fullName={fullName}
       prNumber={prNumber}
+      codeReviewIssue={codeReviewIssue}
+      codeReviewTotalIssues={codeReviewTotalIssues}
     />
   );
 }
@@ -109,17 +112,23 @@ export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, wa
         specmapFiles.map((file, i) =>
           renderFile(file, annotationsByFile, threadsByFile, mode, i, fullName, prNumber),
         )}
-      {regularFiles.map((file, index) => (
-        <div key={file.filename}>
-          {walkthroughStep?.file === file.filename && walkthroughTotalSteps && (
-            <WalkthroughStepCard step={walkthroughStep} totalSteps={walkthroughTotalSteps} fullName={fullName} prNumber={prNumber} />
-          )}
-          {codeReviewIssue?.file === file.filename && codeReviewTotalIssues && (
-            <CodeReviewIssueCard issue={codeReviewIssue} totalIssues={codeReviewTotalIssues} fullName={fullName} prNumber={prNumber} />
-          )}
-          {renderFile(file, annotationsByFile, threadsByFile, mode, specmapFiles.length + index, fullName, prNumber)}
-        </div>
-      ))}
+      {regularFiles.map((file, index) => {
+        const fileIssue = codeReviewIssue?.file === file.filename ? codeReviewIssue : null;
+        // Fall back to file-level card if issue has no start_line
+        const issueInline = fileIssue && fileIssue.start_line != null;
+        return (
+          <div key={file.filename}>
+            {walkthroughStep?.file === file.filename && walkthroughTotalSteps && (
+              <WalkthroughStepCard step={walkthroughStep} totalSteps={walkthroughTotalSteps} fullName={fullName} prNumber={prNumber} />
+            )}
+            {renderFile(
+              file, annotationsByFile, threadsByFile, mode, specmapFiles.length + index, fullName, prNumber,
+              issueInline ? fileIssue : null,
+              codeReviewTotalIssues,
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

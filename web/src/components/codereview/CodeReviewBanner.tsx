@@ -16,9 +16,11 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
     error,
     maxIssues,
     timeout,
+    customPrompt,
     available,
     setMaxIssues,
     setTimeout: setStoreTimeout,
+    setCustomPrompt,
     generate,
     cancelGenerate,
     start,
@@ -44,6 +46,13 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
             </span>
           </div>
           <p className="text-sm text-[var(--text-secondary)] mb-3">{review.summary}</p>
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            placeholder="Optional: add review instructions (e.g. 'focus on error handling' or 'check for thread safety')..."
+            rows={2}
+            className="w-full text-xs px-3 py-2 mb-3 border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:ring-1 focus:ring-[var(--focus-ring)]"
+          />
           <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={start}
@@ -56,7 +65,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
               disabled={loading}
               className="px-3 py-1.5 text-xs font-medium bg-[var(--surface-1)] text-[var(--text-secondary)] border border-[var(--cr-border)] cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Generating...' : 'Regenerate'}
+              {loading ? 'Regenerating...' : 'Regenerate'}
             </button>
             {loading && (
               <span className="text-xs text-[var(--text-muted)]">
@@ -80,6 +89,13 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
             Generate an AI code review for this PR. The reviewer will analyze diffs, verify assumptions
             by reading code, and surface issues with severity ratings and suggested fixes.
           </p>
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            placeholder="Optional: add review instructions (e.g. 'focus on error handling' or 'check for thread safety')..."
+            rows={2}
+            className="w-full text-xs px-3 py-2 mb-3 border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:ring-1 focus:ring-[var(--focus-ring)]"
+          />
           <div className="flex items-center gap-3 flex-wrap">
             <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
               Max issues:

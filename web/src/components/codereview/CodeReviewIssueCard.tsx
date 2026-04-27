@@ -32,8 +32,7 @@ export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: 
 
   return (
     <div
-      className="font-sans border-l-4 border border-[var(--border)] bg-gradient-to-r from-[var(--cr-gradient-from)] to-[var(--cr-gradient-to)] p-4 mb-2"
-      style={{ borderLeftColor: severityColor[issue.severity] || 'var(--cr-border)' }}
+      className="font-sans bg-gradient-to-r from-[var(--cr-gradient-from)] to-[var(--cr-gradient-to)] p-4"
       data-code-review-issue={issue.issue_number}
     >
       <div className="flex items-center justify-between mb-2">
@@ -48,7 +47,7 @@ export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: 
             Issue {issue.issue_number} of {totalIssues}
           </span>
           {issue.category && (
-            <span className="px-1.5 py-0.5 text-[10px] bg-[var(--surface-2)] text-[var(--text-muted)] rounded">
+            <span className="px-1.5 py-0.5 text-[10px] bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--border-strong)] rounded font-medium">
               {categoryLabels[issue.category] || issue.category}
             </span>
           )}
@@ -136,10 +135,10 @@ function IssueChat({ issue, fullName, prNumber }: { issue: CodeReviewIssue; full
   };
 
   return (
-    <div className="mt-3 border-t border-[var(--border)] pt-3">
+    <div className="mt-3 border-t border-[var(--border-strong)] pt-3">
       <button
         onClick={() => toggleChat(issue.issue_number)}
-        className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer mb-2"
+        className="text-xs text-[var(--text-primary)] hover:text-[var(--accent-text)] bg-transparent border-0 cursor-pointer mb-2 font-medium"
       >
         {expanded || hasMessages ? (expanded ? 'Collapse chat' : 'Expand chat') : 'Chat about this'}
         <span className="ml-1">{expanded ? '\u25B2' : '\u25BC'}</span>

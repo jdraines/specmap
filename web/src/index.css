@@ -453,6 +453,12 @@ tr.ann-line-hl > td:first-child {
   line-height: 0;
 }
 
+/* ── Inline code review issue card ── */
+.diff-widget-code-review {
+  border-top: 3px solid var(--cr-issue-border-color, var(--cr-border));
+  border-bottom: 3px solid var(--cr-issue-border-color, var(--cr-border));
+}
+
 /* ── File focus indicator for keyboard nav ── */
 [data-file-focused="true"] {
   outline: 2px solid var(--focus-ring);

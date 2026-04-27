@@ -55,11 +55,11 @@ export function StepChat({ step, fullName, prNumber }: StepChatProps) {
   );
 
   return (
-    <div className="mt-3 border-t border-[var(--border)] pt-3">
+    <div className="mt-3 border-t border-[var(--border-strong)] pt-3">
       {/* Toggle button */}
       <button
         onClick={() => toggleChat(step.step_number)}
-        className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer mb-2"
+        className="text-xs text-[var(--text-primary)] hover:text-[var(--accent-text)] bg-transparent border-0 cursor-pointer mb-2 font-medium"
       >
         {expanded || hasMessages ? (expanded ? 'Collapse chat' : 'Expand chat') : 'Chat about this'}
         <span className="ml-1">{expanded ? '\u25B2' : '\u25BC'}</span>
