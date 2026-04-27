@@ -8,20 +8,20 @@ import { useAuthStore } from '../stores/authStore';
 const PAGE_SIZE = 20;
 const DEBOUNCE_MS = 300;
 
-// Track whether the initial auto-redirect has fired across mounts,
-// so navigating back to the dashboard doesn't redirect again.
-let _initialRedirectDone = false;
-
 export function DashboardPage() {
   const currentRepo = useAuthStore((s) => s.currentRepo);
+  const didAutoRedirect = useAuthStore((s) => s.didAutoRedirect);
   const navigate = useNavigate();
 
+  // Auto-redirect to the local repo once per app session.
+  // didAutoRedirect lives in the Zustand store (not component state),
+  // so it persists across SPA navigations but resets on full page reload.
   useEffect(() => {
-    if (currentRepo && !_initialRedirectDone) {
-      _initialRedirectDone = true;
+    if (currentRepo && !didAutoRedirect) {
+      useAuthStore.setState({ didAutoRedirect: true });
       navigate(`/r/${currentRepo}`, { replace: true });
     }
-  }, [currentRepo, navigate]);
+  }, [currentRepo, didAutoRedirect, navigate]);
   const [data, setData] = useState<PaginatedResponse<Repository> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

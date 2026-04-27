@@ -6,6 +6,7 @@ interface AuthState {
   user: User | null;
   currentRepo: string | null;
   loading: boolean;
+  didAutoRedirect: boolean;
   fetchUser: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -14,6 +15,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   currentRepo: null,
   loading: true,
+  didAutoRedirect: false,
   fetchUser: async () => {
     try {
       const status = await auth.status();

@@ -44,13 +44,16 @@ def _open_browser_when_ready(url: str, timeout: float = 10.0):
         import time
         import urllib.request
 
+        # Poll /healthz to confirm the app is fully up (not just the reloader)
+        health_url = url.rstrip("/") + "/healthz"
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                urllib.request.urlopen(url, timeout=1)
-                break
+                resp = urllib.request.urlopen(health_url, timeout=1)
+                if resp.status == 200:
+                    break
             except Exception:
-                time.sleep(0.15)
+                time.sleep(0.3)
         webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
