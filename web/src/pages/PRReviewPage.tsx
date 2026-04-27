@@ -203,6 +203,20 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
       <p className="text-xs text-[var(--text-secondary)] mb-4">
         {pr.author_login} &middot; {pr.head_branch} &rarr; {pr.base_branch} &middot;{' '}
         <span className="text-[var(--text-muted)]">{pr.head_sha.slice(0, 7)}</span>
+        {files.length > 0 && (() => {
+          const adds = files.reduce((s, f) => s + f.additions, 0);
+          const dels = files.reduce((s, f) => s + f.deletions, 0);
+          return (
+            <>
+              {' '}&middot;{' '}
+              <span className="text-[var(--insert-text)]">+{adds}</span>
+              {' '}
+              <span className="text-[var(--delete-text)]">-{dels}</span>
+              {' '}
+              <span className="text-[var(--text-muted)]">({adds + dels} lines across {files.length} files)</span>
+            </>
+          );
+        })()}
       </p>
       <ReviewToolbar annotations={allAnnotations} files={files} annotationsByFile={annotationsByFile} />
       <div className="flex gap-4">

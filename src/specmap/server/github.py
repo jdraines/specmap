@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import math
 import re as _re
 import secrets
@@ -12,6 +13,8 @@ from urllib.parse import urlencode
 import httpx
 
 from specmap.server.forge import ForgeNotFound
+
+logger = logging.getLogger("specmap.server")
 
 API_BASE = "https://api.github.com"
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
@@ -109,13 +112,20 @@ class GitHubProvider:
         return repos
 
     async def list_repos_page(
-        self, client: httpx.AsyncClient, token: str,
-        *, page: int = 1, per_page: int = 20, search: str = "",
+        self,
+        client: httpx.AsyncClient,
+        token: str,
+        *,
+        page: int = 1,
+        per_page: int = 20,
+        search: str = "",
         login: str = "",
     ) -> dict:
         if search:
-            # GitHub /user/repos has no search — use search API
+            # GitHub /user/repos has no search filter — use search API
+            # Search in user's repos + org repos they have access to
             q = f"{search} user:{login}" if login else search
+            logger.info("GitHub repo search: q=%r, page=%d", q, page)
             resp = await client.get(
                 f"{self.base_url}/search/repositories",
                 params={"q": q, "sort": "updated", "per_page": str(per_page), "page": str(page)},
@@ -123,8 +133,44 @@ class GitHubProvider:
             )
             resp.raise_for_status()
             data = resp.json()
-            total = min(data.get("total_count", 0), 1000)  # GitHub caps at 1000
+            total = min(data.get("total_count", 0), 1000)
             items = [self._normalize_repo(r) for r in data.get("items", [])]
+            logger.info(
+                "GitHub search returned %d items (total_count=%d)",
+                len(items),
+                data.get("total_count", 0),
+            )
+
+            # GitHub search API can be stale — if no results, fall back to
+            # listing recent repos and filtering client-side
+            if not items and page == 1:
+                logger.info(
+                    "GitHub search empty — falling back to user/repos filter for %r", search
+                )
+                fallback_resp = await client.get(
+                    f"{self.base_url}/user/repos",
+                    params={
+                        "per_page": "100",
+                        "sort": "updated",
+                        "affiliation": "owner,collaborator,organization_member",
+                    },
+                    headers=self._headers(token),
+                )
+                fallback_resp.raise_for_status()
+                search_lower = search.lower()
+                all_repos = fallback_resp.json()
+                items = [
+                    self._normalize_repo(r)
+                    for r in all_repos
+                    if search_lower in r.get("full_name", "").lower()
+                    or search_lower in r.get("name", "").lower()
+                ]
+                logger.info(
+                    "Fallback: filtered %d/%d repos matching %r", len(items), len(all_repos), search
+                )
+                total = len(items)
+                items = items[:per_page]
+
             return {
                 "items": items,
                 "total": total,
@@ -160,9 +206,7 @@ class GitHubProvider:
                 "total_pages": total_pages,
             }
 
-    async def get_repo(
-        self, client: httpx.AsyncClient, token: str, owner: str, name: str
-    ) -> dict:
+    async def get_repo(self, client: httpx.AsyncClient, token: str, owner: str, name: str) -> dict:
         resp = await client.get(
             f"{self.base_url}/repos/{owner}/{name}", headers=self._headers(token)
         )
@@ -170,8 +214,13 @@ class GitHubProvider:
         return self._normalize_repo(resp.json())
 
     async def list_pulls(
-        self, client: httpx.AsyncClient, token: str, owner: str, repo: str,
-        *, per_page: int = 30,
+        self,
+        client: httpx.AsyncClient,
+        token: str,
+        owner: str,
+        repo: str,
+        *,
+        per_page: int = 30,
     ) -> list[dict]:
         resp = await client.get(
             f"{self.base_url}/repos/{owner}/{repo}/pulls",
@@ -228,7 +277,12 @@ class GitHubProvider:
             for entry in truncated_files:
                 try:
                     content = await self.get_file_content(
-                        client, token, owner, repo, entry["filename"], head_sha,
+                        client,
+                        token,
+                        owner,
+                        repo,
+                        entry["filename"],
+                        head_sha,
                     )
                     text = content.decode("utf-8", errors="replace")
                     lines = text.splitlines()
@@ -241,7 +295,9 @@ class GitHubProvider:
                         hunk_header = f"@@ -1,0 +1,{len(lines)} @@"
                         patch_lines = [hunk_header] + [f" {line}" for line in lines]
                     entry["patch"] = "\n".join(patch_lines)
-                    entry["additions"] = len(lines) if entry["status"] == "added" else entry["additions"]
+                    entry["additions"] = (
+                        len(lines) if entry["status"] == "added" else entry["additions"]
+                    )
                     entry["changes"] = entry["additions"] + entry["deletions"]
                 except (ForgeNotFound, Exception):
                     pass
@@ -285,13 +341,19 @@ class GitHubProvider:
         data = resp.json()
         if data.get("truncated"):
             import logging
+
             logging.getLogger("specmap.server").warning(
                 "GitHub tree listing truncated for %s/%s@%s", owner, repo, sha
             )
         return [{"path": e["path"], "type": e["type"]} for e in data.get("tree", [])]
 
     async def list_pull_comments(
-        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
+        self,
+        client: httpx.AsyncClient,
+        token: str,
+        owner: str,
+        repo: str,
+        number: int,
     ) -> dict:
         async def fetch_all(url: str) -> list[dict]:
             items: list[dict] = []
@@ -305,7 +367,8 @@ class GitHubProvider:
         issue_url = f"{self.base_url}/repos/{owner}/{repo}/issues/{number}/comments?per_page=100"
         review_url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100"
         issue_comments, review_comments = await asyncio.gather(
-            fetch_all(issue_url), fetch_all(review_url),
+            fetch_all(issue_url),
+            fetch_all(review_url),
         )
 
         # Build threads from review comments via in_reply_to_id chains
@@ -325,37 +388,48 @@ class GitHubProvider:
         for root_id, comments in root_map.items():
             comments.sort(key=lambda c: c["created_at"])
             root = comments[0]
-            threads.append({
-                "thread_id": str(root_id),
-                "path": root.get("path"),
-                "line": root.get("line"),
-                "side": root.get("side"),
-                "is_resolved": False,
-                "is_outdated": root.get("position") is None and root.get("original_position") is not None,
-                "comments": [self._normalize_comment(c) for c in comments],
-                "comment_count": len(comments),
-                "latest_updated_at": max(c["updated_at"] for c in comments),
-            })
+            threads.append(
+                {
+                    "thread_id": str(root_id),
+                    "path": root.get("path"),
+                    "line": root.get("line"),
+                    "side": root.get("side"),
+                    "is_resolved": False,
+                    "is_outdated": root.get("position") is None
+                    and root.get("original_position") is not None,
+                    "comments": [self._normalize_comment(c) for c in comments],
+                    "comment_count": len(comments),
+                    "latest_updated_at": max(c["updated_at"] for c in comments),
+                }
+            )
 
         general_comments = []
         for c in issue_comments:
-            general_comments.append({
-                "thread_id": str(c["id"]),
-                "path": None,
-                "line": None,
-                "side": None,
-                "is_resolved": False,
-                "is_outdated": False,
-                "comments": [self._normalize_comment(c)],
-                "comment_count": 1,
-                "latest_updated_at": c["updated_at"],
-            })
+            general_comments.append(
+                {
+                    "thread_id": str(c["id"]),
+                    "path": None,
+                    "line": None,
+                    "side": None,
+                    "is_resolved": False,
+                    "is_outdated": False,
+                    "comments": [self._normalize_comment(c)],
+                    "comment_count": 1,
+                    "latest_updated_at": c["updated_at"],
+                }
+            )
 
         return {"threads": threads, "general_comments": general_comments}
 
     async def post_pull_comment(
-        self, client: httpx.AsyncClient, token: str, owner: str, repo: str, number: int,
-        body: str, *,
+        self,
+        client: httpx.AsyncClient,
+        token: str,
+        owner: str,
+        repo: str,
+        number: int,
+        body: str,
+        *,
         thread_id: str | None = None,
         path: str | None = None,
         line: int | None = None,
@@ -413,7 +487,7 @@ class GitHubProvider:
         if self.base_url == API_BASE:
             host = "github.com"
         elif self.base_url.endswith("/api/v3"):
-            host = self.base_url[len("https://"):-len("/api/v3")]
+            host = self.base_url[len("https://") : -len("/api/v3")]
         else:
             host = self.base_url.replace("https://", "").replace("http://", "")
         return f"https://x-access-token:{token}@{host}/{owner}/{repo}.git"

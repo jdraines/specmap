@@ -17,12 +17,12 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
     maxIssues,
     timeout,
     customPrompt,
-    contextLines,
+    chunkThreshold,
     available,
     setMaxIssues,
     setTimeout: setStoreTimeout,
     setCustomPrompt,
-    setContextLines,
+    setChunkThreshold,
     generate,
     cancelGenerate,
     start,
@@ -30,7 +30,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
 
   const elapsed = useElapsedTime(loading);
   const [maxInput, setMaxInput] = useState(String(maxIssues));
-  const [contextInput, setContextInput] = useState(String(contextLines));
+  const [chunkInput, setChunkInput] = useState(String(chunkThreshold));
   const [timeoutInput, setTimeoutInput] = useState(String(timeout));
 
   if (!available) return null;
@@ -134,19 +134,19 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
               <span className="text-[var(--text-muted)]">s</span>
             </label>
             <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
-              Context:
+              Chunk at:
               <input
                 type="number"
-                min="3"
-                max="50"
-                value={contextInput}
-                onChange={(e) => setContextInput(e.target.value)}
+                min="100"
+                max="5000"
+                value={chunkInput}
+                onChange={(e) => setChunkInput(e.target.value)}
                 onBlur={() => {
-                  const n = Math.max(3, Math.min(50, parseInt(contextInput) || 10));
-                  setContextInput(String(n));
-                  setContextLines(n);
+                  const n = Math.max(100, Math.min(5000, parseInt(chunkInput) || 500));
+                  setChunkInput(String(n));
+                  setChunkThreshold(n);
                 }}
-                className="w-14 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
+                className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
               />
               <span className="text-[var(--text-muted)]">lines</span>
             </label>

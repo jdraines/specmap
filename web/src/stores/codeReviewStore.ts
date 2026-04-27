@@ -18,6 +18,7 @@ interface CodeReviewState {
   timeout: number; // seconds
   customPrompt: string;
   contextLines: number;
+  chunkThreshold: number;
   available: boolean;
 
   // Chat state
@@ -31,6 +32,7 @@ interface CodeReviewState {
   setTimeout: (t: number) => void;
   setCustomPrompt: (p: string) => void;
   setContextLines: (n: number) => void;
+  setChunkThreshold: (n: number) => void;
   generate: (fullName: string, number: number, force?: boolean) => Promise<void>;
   cancelGenerate: () => void;
   start: () => void;
@@ -63,6 +65,7 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
   timeout: loadStorage('specmap-cr-timeout', 300),
   customPrompt: '',
   contextLines: loadStorage('specmap-cr-context-lines', 10),
+  chunkThreshold: loadStorage('specmap-cr-chunk-threshold', 500),
   available: false,
 
   chatExpanded: {},
@@ -88,14 +91,19 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
     set({ contextLines: n });
   },
 
+  setChunkThreshold: (n) => {
+    localStorage.setItem('specmap-cr-chunk-threshold', JSON.stringify(n));
+    set({ chunkThreshold: n });
+  },
+
   generate: async (fullName, number, force) => {
-    const { maxIssues, timeout, customPrompt, contextLines } = get();
+    const { maxIssues, timeout, customPrompt, contextLines, chunkThreshold } = get();
 
     const controller = new AbortController();
     (get() as any)._generateController = controller;
     set({ loading: true, error: null });
     try {
-      const cr = await codeReviewApi.generate(fullName, number, maxIssues, timeout, contextLines, customPrompt || undefined, force, controller.signal);
+      const cr = await codeReviewApi.generate(fullName, number, maxIssues, timeout, contextLines, chunkThreshold, customPrompt || undefined, force, controller.signal);
       set({ review: cr, loading: false });
     } catch (e) {
       if (controller.signal.aborted) {

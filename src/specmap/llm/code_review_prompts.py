@@ -45,6 +45,12 @@ dangerouslySetInnerHTML, state management issues, missing error boundaries, layo
 **Refactoring** (when applicable): API preservation verification, migration completeness, \
 dead code left behind, inconsistent naming after rename.
 
+**Cross-codebase wiring**: When you see a changed function signature, renamed export, \
+modified type definition, or altered API contract, use grep_codebase to find all callers \
+and consumers. Verify they've been updated. If callers exist outside the files you're \
+reviewing, flag this as an issue pinned to the primary change, noting the affected \
+call sites in the description.
+
 ## Self-Verification (Required for P0 and P1)
 
 Before reporting any P0 or P1 issue, you MUST:
@@ -154,6 +160,151 @@ def build_code_review_prompt(
     parts.append(
         f"Review this PR. Find up to {max_issues} issues, ordered by severity. "
         "Use your tools to verify assumptions before flagging issues. "
+        "Return a JSON object matching the CodeReviewResponse schema."
+    )
+
+    return "\n".join(parts)
+
+
+def build_chunk_review_prompt(
+    pr_title: str,
+    head_branch: str,
+    base_branch: str,
+    chunk_patches: list[dict],
+    chunk_index: int,
+    total_chunks: int,
+    all_changed_files: list[str],
+    annotations: list[dict],
+    spec_contents: dict[str, str],
+    max_issues: int = 20,
+    custom_prompt: str = "",
+) -> str:
+    """Build prompt for reviewing a single chunk of a large PR.
+
+    Similar to build_code_review_prompt but adds chunk context and
+    emphasizes cross-codebase verification.
+    """
+    parts: list[str] = []
+
+    chunk_files = [fp["filename"] for fp in chunk_patches]
+    other_files = [f for f in all_changed_files if f not in chunk_files]
+
+    parts.append(
+        f"# Pull Request (Chunk {chunk_index + 1} of {total_chunks})\n\n"
+        f"**Title:** {pr_title}\n"
+        f"**Branch:** {head_branch} → {base_branch}\n"
+        f"**Max issues to report:** {max_issues}\n\n"
+        f"You are reviewing a subset of this PR's changes. "
+        f"This chunk contains {len(chunk_files)} file(s). "
+        f"The full PR changes {len(all_changed_files)} files total.\n"
+    )
+
+    if other_files:
+        parts.append(
+            "**Other files changed in this PR (not in your chunk):**\n"
+            + "\n".join(f"- {f}" for f in other_files[:30])
+            + ("\n..." if len(other_files) > 30 else "")
+            + "\n\nUse grep_codebase and read_file to check for wiring issues "
+            "between your chunk and these other files.\n"
+        )
+
+    # Annotations for this chunk's files
+    chunk_annotations = [a for a in annotations if a.get("file") in chunk_files]
+    if chunk_annotations:
+        parts.append("# Annotations\n")
+        for ann in chunk_annotations:
+            parts.append(
+                f"## {ann['file']} (lines {ann['start_line']}-{ann['end_line']})\n"
+                f"{ann['description']}\n"
+            )
+            parts.append("")
+
+    # Chunk file patches
+    parts.append("# Changed Files in This Chunk\n")
+    for fp in chunk_patches:
+        patch = fp.get("patch", "")
+        if patch:
+            parts.append(f"## {fp['filename']}\n```diff\n{patch}\n```\n")
+        else:
+            parts.append(f"## {fp['filename']}\n(binary or empty diff)\n")
+
+    # Spec documents
+    if spec_contents:
+        parts.append("# Spec Documents\n")
+        for spec_file, content in spec_contents.items():
+            parts.append(f"## {spec_file}\n{content}\n")
+
+    if custom_prompt:
+        parts.append(
+            "# Reviewer Instructions\n\n" + custom_prompt + "\n"
+        )
+
+    parts.append(
+        f"Review the files in this chunk. Find up to {max_issues} issues, ordered by severity. "
+        "Use your tools to verify assumptions and check for cross-codebase wiring issues. "
+        "Return a JSON object matching the CodeReviewResponse schema."
+    )
+
+    return "\n".join(parts)
+
+
+_CONSOLIDATION_SYSTEM = """\
+You are a code review consolidator. You receive issues found by multiple review agents \
+that each examined a different portion of a pull request. Your job is to:
+
+1. **Merge duplicates**: If two issues describe the same underlying problem (same code, \
+same bug, possibly from different perspectives), merge them into one. Pin the issue to the \
+primary diff location. Note any cross-codebase contact points in the description.
+
+2. **Validate reasoning**: For every P0 and P1 issue, critically evaluate the reasoning:
+   - Does the claimed bug actually exist?
+   - Is the reasoning logically consistent? Watch for contradictions like "a guard exists \
+but it doesn't work" without a concrete bypass.
+   - Could the described triggering input actually reach the flagged code?
+   - If the reasoning is flawed or the bug doesn't exist, DROP the issue entirely. \
+Do not downgrade — if it's not a real bug, it's not any severity level.
+
+3. **Order results**: P0 first, then P1, etc. Within same severity, order for narrative flow.
+
+4. **Write a summary**: 2-4 sentences covering the overall review findings.
+
+Be skeptical. You are seeing these issues cold — you didn't generate them. False positives \
+damage reviewer trust far more than missing a low-severity nit. When in doubt, drop."""
+
+
+def build_consolidation_prompt(
+    issues: list[dict],
+    chunk_summaries: list[str],
+) -> str:
+    """Build prompt for the consolidation agent."""
+    parts: list[str] = []
+
+    parts.append(
+        f"# Review Consolidation\n\n"
+        f"The following {len(issues)} issues were found across "
+        f"{len(chunk_summaries)} review chunks.\n"
+    )
+
+    if chunk_summaries:
+        parts.append("## Chunk Summaries\n")
+        for i, summary in enumerate(chunk_summaries):
+            parts.append(f"**Chunk {i + 1}:** {summary}\n")
+
+    parts.append("## Issues to Consolidate\n")
+    for issue in issues:
+        parts.append(
+            f"### {issue.get('severity', '?')} — {issue.get('title', '')}\n"
+            f"**File:** {issue.get('file', '')} "
+            f"(lines {issue.get('start_line', '?')}-{issue.get('end_line', '?')})\n"
+            f"**Category:** {issue.get('category', '')}\n"
+            f"**Description:** {issue.get('description', '')}\n"
+            f"**Reasoning:** {issue.get('reasoning', '')}\n"
+            f"**Suggested fix:** {issue.get('suggested_fix', '')}\n"
+        )
+
+    parts.append(
+        "Consolidate these issues: merge duplicates, validate P0/P1 reasoning "
+        "(drop any with flawed logic), and order the result. "
         "Return a JSON object matching the CodeReviewResponse schema."
     )
 

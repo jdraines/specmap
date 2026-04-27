@@ -8,7 +8,7 @@ import re
 from pydantic_ai import Agent, RunContext
 
 from specmap.llm.chat_agent import ChatDeps
-from specmap.llm.code_review_prompts import _CODE_REVIEW_SYSTEM
+from specmap.llm.code_review_prompts import _CODE_REVIEW_SYSTEM, _CONSOLIDATION_SYSTEM
 from specmap.llm.code_review_schemas import CodeReviewResponse
 from specmap.server.forge import ForgeNotFound
 
@@ -18,6 +18,13 @@ CodeReviewDeps = ChatDeps
 code_review_agent = Agent(
     deps_type=CodeReviewDeps,
     system_prompt=_CODE_REVIEW_SYSTEM,
+    output_type=CodeReviewResponse,
+    retries=2,
+)
+
+# Consolidation agent — no tools, no deps. Works from issue descriptions only.
+consolidation_agent = Agent(
+    system_prompt=_CONSOLIDATION_SYSTEM,
     output_type=CodeReviewResponse,
     retries=2,
 )
