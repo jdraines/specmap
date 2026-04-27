@@ -17,10 +17,12 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
     maxIssues,
     timeout,
     customPrompt,
+    contextLines,
     available,
     setMaxIssues,
     setTimeout: setStoreTimeout,
     setCustomPrompt,
+    setContextLines,
     generate,
     cancelGenerate,
     start,
@@ -28,6 +30,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
 
   const elapsed = useElapsedTime(loading);
   const [maxInput, setMaxInput] = useState(String(maxIssues));
+  const [contextInput, setContextInput] = useState(String(contextLines));
   const [timeoutInput, setTimeoutInput] = useState(String(timeout));
 
   if (!available) return null;
@@ -61,7 +64,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
               Start Review
             </button>
             <button
-              onClick={() => generate(fullName, prNumber)}
+              onClick={() => generate(fullName, prNumber, true)}
               disabled={loading}
               className="px-3 py-1.5 text-xs font-medium bg-[var(--surface-1)] text-[var(--text-secondary)] border border-[var(--cr-border)] cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -129,6 +132,23 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
                 className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
               />
               <span className="text-[var(--text-muted)]">s</span>
+            </label>
+            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+              Context:
+              <input
+                type="number"
+                min="3"
+                max="50"
+                value={contextInput}
+                onChange={(e) => setContextInput(e.target.value)}
+                onBlur={() => {
+                  const n = Math.max(3, Math.min(50, parseInt(contextInput) || 10));
+                  setContextInput(String(n));
+                  setContextLines(n);
+                }}
+                className="w-14 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
+              />
+              <span className="text-[var(--text-muted)]">lines</span>
             </label>
             <button
               onClick={() => generate(fullName, prNumber)}

@@ -27,8 +27,8 @@ documentation gap.
 
 Adapt your focus based on what the diff actually contains:
 
-**Correctness**: Logic errors, off-by-one, null/undefined handling, type mismatches, \
-race conditions, missing return values, incorrect assumptions about data shape.
+**Correctness**: Logic errors, off-by-one, unhandled error paths where no guard exists, \
+type mismatches, race conditions, missing return values, incorrect assumptions about data shape.
 
 **Security**: Injection vulnerabilities (SQL, XSS, command), authentication/authorization \
 gaps, data exposure, insecure defaults, missing input validation at trust boundaries.
@@ -44,6 +44,22 @@ dangerouslySetInnerHTML, state management issues, missing error boundaries, layo
 
 **Refactoring** (when applicable): API preservation verification, migration completeness, \
 dead code left behind, inconsistent naming after rename.
+
+## Self-Verification (Required for P0 and P1)
+
+Before reporting any P0 or P1 issue, you MUST:
+1. Quote the exact line(s) containing the problem in your reasoning
+2. Trace the code path that leads to the bug — identify what concrete input triggers it
+3. Confirm that no guard clause, early return, try/except, or upstream validation \
+prevents the issue. Guards may appear as:
+   - Early returns: `if not x: return` or `if x is None: return default`
+   - Assertions or length checks anywhere before the access
+   - Upstream checks in the same function or a calling function
+   - Try/except wrapping the access
+4. If you cannot construct a concrete triggering input that bypasses ALL existing guards, \
+downgrade the issue or drop it entirely
+
+False P0/P1 issues actively damage reviewer trust. A missed P4 is far better than a false P0.
 
 ## Output Guidelines
 

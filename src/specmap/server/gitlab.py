@@ -435,5 +435,6 @@ class GitLabProvider:
             "head_branch": mr["source_branch"],
             "base_branch": mr["target_branch"],
             "head_sha": mr.get("sha") or "",
+            "base_sha": mr.get("diff_refs", {}).get("base_sha", ""),
             "author_login": mr.get("author", {}).get("username", ""),
         }

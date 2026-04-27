@@ -441,5 +441,6 @@ class GitHubProvider:
             "head_branch": p["head"]["ref"],
             "base_branch": p["base"]["ref"],
             "head_sha": p["head"]["sha"],
+            "base_sha": p["base"]["sha"],
             "author_login": p.get("user", {}).get("login", ""),
         }

@@ -1480,6 +1480,64 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             return remote_data if r_time >= l_time else local_data
         return remote_data or local_data
 
+    async def _generate_rich_patches(
+        provider: ForgeProvider,
+        http_client: httpx.AsyncClient,
+        token: str,
+        owner: str,
+        repo: str,
+        file_patches: list[dict],
+        head_sha: str,
+        base_sha: str,
+        context_lines: int = 10,
+    ) -> dict[str, str]:
+        """Generate unified diffs with configurable context lines.
+
+        Fetches base and head versions of each changed file and produces
+        diffs with more context than the 3-line API default.
+        """
+        from difflib import unified_diff
+
+        result: dict[str, str] = {}
+        for fp in file_patches:
+            filename = fp["filename"]
+            status = fp.get("status", "modified")
+
+            if status == "removed":
+                result[filename] = fp.get("patch", "")
+                continue
+
+            try:
+                head_raw = await provider.get_file_content(
+                    http_client, token, owner, repo, filename, head_sha,
+                )
+                head_lines = head_raw.decode("utf-8", errors="replace").splitlines(keepends=True)
+            except ForgeNotFound:
+                head_lines = []
+
+            if status == "added":
+                base_lines: list[str] = []
+            else:
+                try:
+                    base_raw = await provider.get_file_content(
+                        http_client, token, owner, repo, filename, base_sha,
+                    )
+                    base_lines = base_raw.decode("utf-8", errors="replace").splitlines(keepends=True)
+                except ForgeNotFound:
+                    base_lines = []
+
+            diff = list(unified_diff(
+                base_lines, head_lines,
+                fromfile=f"a/{filename}", tofile=f"b/{filename}",
+                n=context_lines,
+            ))
+            if diff:
+                result[filename] = "".join(diff)
+            else:
+                result[filename] = fp.get("patch", "")
+
+        return result
+
     async def _handle_generate_code_review(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)
         if not cfg.core.api_key:
@@ -1492,14 +1550,16 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         body = await request.json()
         max_issues = body.get("max_issues", 20)
         custom_prompt = body.get("custom_prompt", "")
+        context_lines = body.get("context_lines", 10)
+        force = body.get("force", False)
 
         # Fetch PR
         p = await provider.get_pull(_http(request), token, owner, repo, number)
         branch = p["head_branch"]
         head_sha = p["head_sha"]
 
-        # Check existing code review (skip cache if custom prompt provided)
-        if not custom_prompt:
+        # Check existing code review (skip cache if forced or custom prompt provided)
+        if not force and not custom_prompt:
             existing_cr = await _load_code_review(
                 request, provider, token, owner, repo, branch, head_sha,
             )
@@ -1535,19 +1595,36 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             except ForgeNotFound:
                 pass
 
-        # Build prompt
+        # Generate rich patches with configurable context for the LLM prompt
+        base_sha = p.get("base_sha", "")
+        rich_patches_map = {}
+        if base_sha:
+            rich_patches_map = await _generate_rich_patches(
+                provider, _http(request), token, owner, repo,
+                file_patches, head_sha, base_sha, context_lines,
+            )
+
+        # Build file_patches with rich context for the prompt
+        rich_file_patches = []
+        for fp in file_patches:
+            rich_fp = dict(fp)
+            if fp["filename"] in rich_patches_map:
+                rich_fp["patch"] = rich_patches_map[fp["filename"]]
+            rich_file_patches.append(rich_fp)
+
+        # Build prompt (uses rich patches with extra context)
         user_prompt = build_code_review_prompt(
             pr_title=p.get("title", ""),
             head_branch=p["head_branch"],
             base_branch=p["base_branch"],
             annotations=annotations_list,
-            file_patches=file_patches,
+            file_patches=rich_file_patches,
             spec_contents=spec_contents,
             max_issues=max_issues,
             custom_prompt=custom_prompt,
         )
 
-        # Build deps for tools
+        # Build deps for tools (uses original API patches for read_file tool)
         changed_files = [fp["filename"] for fp in file_patches]
         file_patches_map = {
             fp["filename"]: fp.get("patch", "")
@@ -1706,6 +1783,15 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart as MTextPart, UserPromptPart
 
         context_parts = [
+            "## About This Chat\n"
+            "You are a chat assistant helping the user discuss a code review issue. "
+            "The code review was generated by a separate AI review agent. You can see "
+            "the review's output (summary, issues, descriptions, suggested fixes) below, "
+            "but you do not have access to the review agent's internal reasoning or "
+            "chain of thought. If the user asks about why the reviewer made a specific "
+            "judgment, you can analyze the code yourself using your tools, but be upfront "
+            "that you are a different agent and can only offer your own analysis, not "
+            "explain the original reviewer's thought process.\n",
             f"## PR Overview\n**Title:** {p.get('title', '')}\n**Branch:** {p['head_branch']} → {p['base_branch']}\n",
             f"## Code Review Summary\n{cr_data.get('summary', '')}\n",
             "## All Issues\n",

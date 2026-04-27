@@ -126,12 +126,12 @@ export const walkthrough = {
 };
 
 export const codeReview = {
-  generate: (fullName: string, number: number, maxIssues: number = 20, timeout: number = 300, customPrompt?: string, signal?: AbortSignal) =>
+  generate: (fullName: string, number: number, maxIssues: number = 20, timeout: number = 300, contextLines: number = 10, customPrompt?: string, force?: boolean, signal?: AbortSignal) =>
     apiFetch<CodeReview>(
       `/api/v1/repos/${fullName}/pulls/${number}/code-review`,
       {
         method: 'POST',
-        body: JSON.stringify({ max_issues: maxIssues, custom_prompt: customPrompt }),
+        body: JSON.stringify({ max_issues: maxIssues, context_lines: contextLines, custom_prompt: customPrompt, force }),
       },
       timeout * 1000 + 60_000,
       signal,

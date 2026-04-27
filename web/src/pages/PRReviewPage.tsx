@@ -153,25 +153,26 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
     ? codeReviewData.issues[codeReviewIssueIdx] ?? null
     : null;
 
-  // Scroll to walkthrough step card when step changes
+  // Scroll to walkthrough step card when navigating to a different step
+  // Use step_number (primitive) not the step object to avoid re-scrolling on chat updates
+  const currentStepNumber = currentWalkthroughStep?.step_number ?? null;
   useEffect(() => {
-    if (!walkthroughActive || !currentWalkthroughStep) return;
-    const stepNum = currentWalkthroughStep.step_number;
-    const el = document.querySelector(`[data-walkthrough-step="${stepNum}"]`);
+    if (!walkthroughActive || currentStepNumber == null) return;
+    const el = document.querySelector(`[data-walkthrough-step="${currentStepNumber}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [walkthroughActive, currentWalkthroughStep]);
+  }, [walkthroughActive, currentStepNumber]);
 
-  // Scroll to code review issue card when issue changes
+  // Scroll to code review issue card when navigating to a different issue
+  const currentIssueNumber = currentCodeReviewIssue?.issue_number ?? null;
   useEffect(() => {
-    if (!codeReviewActive || !currentCodeReviewIssue) return;
-    const issueNum = currentCodeReviewIssue.issue_number;
-    const el = document.querySelector(`[data-code-review-issue="${issueNum}"]`);
+    if (!codeReviewActive || currentIssueNumber == null) return;
+    const el = document.querySelector(`[data-code-review-issue="${currentIssueNumber}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [codeReviewActive, currentCodeReviewIssue]);
+  }, [codeReviewActive, currentIssueNumber]);
 
   const { showHelp, setShowHelp } = useKeyboardNav({
     fileCount: files.length,
