@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import math
+import re as _re
 import secrets
 from urllib.parse import urlencode
 
@@ -14,10 +16,6 @@ from specmap.server.forge import ForgeNotFound
 API_BASE = "https://api.github.com"
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_HEADERS = {"Accept": "application/vnd.github+json"}
-
-
-import math
-import re as _re
 
 
 def _parse_link_page(resp: httpx.Response, rel: str) -> int | None:

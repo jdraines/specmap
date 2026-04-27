@@ -1657,19 +1657,53 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         except Exception as e:
             raise HTTPError(500, f"Code review generation failed: {e}")
 
-        # Build response
+        # Build set of changed lines per file from the original API patches
+        import re as _re
+        changed_lines_by_file: dict[str, set[int]] = {}
+        for fp in file_patches:
+            lines: set[int] = set()
+            patch = fp.get("patch", "")
+            current_line = 0
+            for pline in patch.splitlines():
+                hunk_match = _re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", pline)
+                if hunk_match:
+                    current_line = int(hunk_match.group(1))
+                    continue
+                if pline.startswith("+") and not pline.startswith("+++"):
+                    lines.add(current_line)
+                    current_line += 1
+                elif pline.startswith("-") and not pline.startswith("---"):
+                    pass  # deleted lines don't advance new-file line counter
+                else:
+                    current_line += 1
+            if fp.get("status") == "added":
+                # New files: all lines are changed
+                lines = set(range(1, current_line + 1))
+            changed_lines_by_file[fp["filename"]] = lines
+
+        # Build response — filter out issues not on changed lines
         issues = []
+        issue_num = 0
         for issue in review_data.issues:
+            start = issue.start_line or 0
+            file_changed = changed_lines_by_file.get(issue.file, set())
+            if start and not any(
+                line in file_changed
+                for line in range(start, (issue.end_line or start) + 1)
+            ):
+                continue  # Issue not on a changed line — discard
+            issue_num += 1
             issues.append({
-                "issue_number": issue.issue_number,
+                "issue_number": issue_num,
                 "severity": issue.severity,
                 "title": issue.title,
                 "description": issue.description,
                 "file": issue.file,
-                "start_line": issue.start_line or 0,
-                "end_line": issue.end_line or 0,
+                "start_line": start,
+                "end_line": issue.end_line or start,
                 "suggested_fix": issue.suggested_fix,
                 "category": issue.category,
+                "reasoning": issue.reasoning,
             })
 
         cr_data = {

@@ -29,6 +29,7 @@ const categoryLabels: Record<string, string> = {
 export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: CodeReviewIssueCardProps) {
   const { nextIssue, prevIssue, exit, currentIssue } = useCodeReviewStore();
   const [showFix, setShowFix] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(false);
 
   return (
     <div
@@ -77,6 +78,22 @@ export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: 
           {showFix && (
             <div className="themed-prose text-sm border-l-2 border-[var(--cr-border)] pl-3 ml-1">
               <ReactMarkdown>{issue.suggested_fix}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+      )}
+
+      {issue.reasoning && (
+        <div className="mb-3">
+          <button
+            onClick={() => setShowReasoning(!showReasoning)}
+            className="text-xs text-[var(--text-secondary)] hover:underline bg-transparent border-0 cursor-pointer mb-1"
+          >
+            {showReasoning ? 'Hide reasoning' : 'Show reasoning'} {showReasoning ? '\u25B2' : '\u25BC'}
+          </button>
+          {showReasoning && (
+            <div className="themed-prose text-sm border-l-2 border-[var(--border-strong)] pl-3 ml-1">
+              <ReactMarkdown>{issue.reasoning}</ReactMarkdown>
             </div>
           )}
         </div>

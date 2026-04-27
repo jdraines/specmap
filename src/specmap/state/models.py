@@ -101,6 +101,7 @@ class CodeReviewIssue(BaseModel):
     end_line: int = 0
     suggested_fix: str = ""  # markdown with code blocks
     category: str = ""  # "correctness", "security", "performance", "style", "design"
+    reasoning: str = ""  # LLM's self-verification reasoning
     chat: list[ChatMessage] = Field(default_factory=list)
 
 

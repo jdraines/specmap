@@ -9,14 +9,14 @@ import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
-logger = logging.getLogger("specmap.mapper")
-
 from specmap.indexer.code_analyzer import CodeChange
 from specmap.indexer.hasher import hash_code_lines
 from specmap.llm.client import LLMClient
 from specmap.llm.prompts import build_annotation_prompt
 from specmap.llm.schemas import AnnotationResponse
 from specmap.state.models import Annotation, SpecRef, _generate_annotation_id
+
+logger = logging.getLogger("specmap.mapper")
 
 
 class Mapper:

@@ -128,6 +128,7 @@ export interface CodeReviewIssue {
   end_line: number | null;
   suggested_fix: string;
   category: string;
+  reasoning?: string;
   chat?: ChatMessage[];
 }
 
