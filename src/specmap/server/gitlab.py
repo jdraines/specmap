@@ -191,6 +191,7 @@ class GitLabProvider:
         )
         resp.raise_for_status()
         result = []
+        truncated_files: list[dict] = []
         for d in resp.json():
             diff_text = d.get("diff", "")
             additions, deletions = _count_diff_stats(diff_text)
@@ -203,14 +204,52 @@ class GitLabProvider:
                 status = "renamed"
             else:
                 status = "modified"
-            result.append({
+            entry = {
                 "filename": d.get("new_path", d.get("old_path", "")),
                 "status": status,
                 "additions": additions,
                 "deletions": deletions,
                 "changes": additions + deletions,
                 "patch": diff_text,
-            })
+            }
+            result.append(entry)
+            # GitLab truncates large diffs — diff is empty but file is not binary
+            if not diff_text and status != "removed" and not d.get("generated_file"):
+                truncated_files.append(entry)
+
+        # Fetch content for truncated diffs and synthesize patches
+        if truncated_files:
+            # Get MR head SHA for content fetching
+            mr_resp = await client.get(
+                f"{self.api_base}/projects/{proj_id}/merge_requests/{number}",
+                headers=self._headers(token),
+            )
+            mr_resp.raise_for_status()
+            head_sha = mr_resp.json().get("sha", "")
+
+            for entry in truncated_files:
+                try:
+                    content = await self.get_file_content(
+                        client, token, owner, repo, entry["filename"], head_sha,
+                    )
+                    text = content.decode("utf-8", errors="replace")
+                    lines = text.splitlines()
+                    if not lines:
+                        continue
+                    # Synthesize a unified diff patch
+                    if entry["status"] == "added":
+                        hunk_header = f"@@ -0,0 +1,{len(lines)} @@"
+                        patch_lines = [hunk_header] + [f"+{line}" for line in lines]
+                    else:
+                        # For modified files we can only show the new content
+                        hunk_header = f"@@ -1,0 +1,{len(lines)} @@"
+                        patch_lines = [hunk_header] + [f" {line}" for line in lines]
+                    entry["patch"] = "\n".join(patch_lines)
+                    entry["additions"] = len(lines) if entry["status"] == "added" else 0
+                    entry["changes"] = entry["additions"] + entry["deletions"]
+                except (ForgeNotFound, Exception):
+                    pass
+
         return result
 
     async def get_file_content(

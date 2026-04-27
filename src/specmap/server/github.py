@@ -202,17 +202,53 @@ class GitHubProvider:
             headers=self._headers(token),
         )
         resp.raise_for_status()
-        return [
-            {
+        result = []
+        truncated_files: list[dict] = []
+        for f in resp.json():
+            patch = f.get("patch", "")
+            entry = {
                 "filename": f["filename"],
                 "status": f["status"],
                 "additions": f["additions"],
                 "deletions": f["deletions"],
                 "changes": f["changes"],
-                "patch": f.get("patch", ""),
+                "patch": patch,
             }
-            for f in resp.json()
-        ]
+            result.append(entry)
+            if not patch and f["status"] != "removed":
+                truncated_files.append(entry)
+
+        # Fetch content for truncated diffs and synthesize patches
+        if truncated_files:
+            pr_resp = await client.get(
+                f"{self.base_url}/repos/{owner}/{repo}/pulls/{number}",
+                headers=self._headers(token),
+            )
+            pr_resp.raise_for_status()
+            head_sha = pr_resp.json().get("head", {}).get("sha", "")
+
+            for entry in truncated_files:
+                try:
+                    content = await self.get_file_content(
+                        client, token, owner, repo, entry["filename"], head_sha,
+                    )
+                    text = content.decode("utf-8", errors="replace")
+                    lines = text.splitlines()
+                    if not lines:
+                        continue
+                    if entry["status"] == "added":
+                        hunk_header = f"@@ -0,0 +1,{len(lines)} @@"
+                        patch_lines = [hunk_header] + [f"+{line}" for line in lines]
+                    else:
+                        hunk_header = f"@@ -1,0 +1,{len(lines)} @@"
+                        patch_lines = [hunk_header] + [f" {line}" for line in lines]
+                    entry["patch"] = "\n".join(patch_lines)
+                    entry["additions"] = len(lines) if entry["status"] == "added" else entry["additions"]
+                    entry["changes"] = entry["additions"] + entry["deletions"]
+                except (ForgeNotFound, Exception):
+                    pass
+
+        return result
 
     async def get_file_content(
         self,
