@@ -58,11 +58,11 @@ export function WalkthroughStepCard({ step, totalSteps, fullName, prNumber }: Wa
           <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--wt-step-num-bg)] text-[var(--wt-step-num-text)] text-[10px] font-semibold">
             {step.step_number}
           </span>
-          <span className="font-medium text-[var(--text-muted)]">of {totalSteps}</span>
+          <span className="font-medium text-[var(--text-secondary)]">of {totalSteps}</span>
         </span>
         <button
           onClick={exit}
-          className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer"
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer"
         >
           exit walkthrough
         </button>

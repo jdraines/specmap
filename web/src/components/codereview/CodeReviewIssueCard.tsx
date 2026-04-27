@@ -44,7 +44,7 @@ export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: 
           >
             {issue.severity}
           </span>
-          <span className="font-medium text-[var(--text-muted)]">
+          <span className="font-medium text-[var(--text-secondary)]">
             Issue {issue.issue_number} of {totalIssues}
           </span>
           {issue.category && (
@@ -55,7 +55,7 @@ export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: 
         </span>
         <button
           onClick={exit}
-          className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer"
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer"
         >
           exit review
         </button>
@@ -174,7 +174,7 @@ function IssueChat({ issue, fullName, prNumber }: { issue: CodeReviewIssue; full
                       : 'bg-[var(--surface-1)] text-[var(--text-primary)] border border-[var(--border)]'
                   }`}
                 >
-                  <div className="text-[10px] text-[var(--text-muted)] mb-2 font-medium uppercase tracking-wide">
+                  <div className="text-[10px] text-[var(--text-secondary)] mb-2 font-medium uppercase tracking-wide">
                     {msg.role === 'user' ? 'You' : 'Assistant'}
                   </div>
                   {msg.role === 'assistant' ? (
@@ -189,13 +189,13 @@ function IssueChat({ issue, fullName, prNumber }: { issue: CodeReviewIssue; full
 
               {isStreaming && (
                 <div className="text-sm rounded px-4 py-3 bg-[var(--surface-1)] text-[var(--text-primary)] border border-[var(--border)]">
-                  <div className="text-[10px] text-[var(--text-muted)] mb-2 font-medium uppercase tracking-wide">
+                  <div className="text-[10px] text-[var(--text-secondary)] mb-2 font-medium uppercase tracking-wide">
                     Assistant
                   </div>
                   {chatToolCalls.length > 0 && (
                     <div className="mb-2 space-y-1">
                       {chatToolCalls.map((tc, i) => (
-                        <div key={i} className="text-[11px] text-[var(--text-muted)] italic">
+                        <div key={i} className="text-[11px] text-[var(--text-secondary)] italic">
                           {tc.result ? (
                             <details className="cursor-pointer">
                               <summary>Used {tc.tool}</summary>

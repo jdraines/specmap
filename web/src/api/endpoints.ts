@@ -1,5 +1,6 @@
-import { apiFetch, apiFetchSSE, apiFetchChatSSE } from './client';
+import { apiFetch, apiFetchSSE, apiFetchChatSSE, apiFetchCodeReviewSSE } from './client';
 import type { ChatSSECallbacks } from './client';
+import type { CodeReviewProgress } from './types';
 import type {
   User,
   Repository,
@@ -9,7 +10,6 @@ import type {
   SpecContent,
   AuthStatus,
   Walkthrough,
-  CodeReview,
   Capabilities,
   GenerateProgress,
   PaginatedResponse,
@@ -126,13 +126,22 @@ export const walkthrough = {
 };
 
 export const codeReview = {
-  generate: (fullName: string, number: number, maxIssues: number = 20, timeout: number = 300, contextLines: number = 10, chunkThreshold: number = 500, customPrompt?: string, force?: boolean, signal?: AbortSignal) =>
-    apiFetch<CodeReview>(
+  generate: (
+    fullName: string,
+    number: number,
+    maxIssues: number = 20,
+    timeout: number = 300,
+    contextLines: number = 10,
+    chunkThreshold: number = 500,
+    customPrompt?: string,
+    force?: boolean,
+    signal?: AbortSignal,
+    onProgress?: (data: CodeReviewProgress) => void,
+  ) =>
+    apiFetchCodeReviewSSE(
       `/api/v1/repos/${fullName}/pulls/${number}/code-review`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ max_issues: maxIssues, context_lines: contextLines, chunk_threshold: chunkThreshold, custom_prompt: customPrompt, force }),
-      },
+      { max_issues: maxIssues, context_lines: contextLines, chunk_threshold: chunkThreshold, custom_prompt: customPrompt, force },
+      onProgress ?? (() => {}),
       timeout * 1000 + 60_000,
       signal,
     ),

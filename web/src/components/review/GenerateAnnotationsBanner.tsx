@@ -61,7 +61,7 @@ export function GenerateAnnotationsBanner({
         <button
           onClick={() => generateAnnotations(fullName, prNumber, mode, true, timeout, false, concurrency)}
           disabled={generating || clearingCache}
-          className="text-xs text-[var(--text-muted)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-xs text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {generating ? (
             <>
@@ -73,7 +73,7 @@ export function GenerateAnnotationsBanner({
         </button>
         {isPartial && !generating && (
           <>
-            <span className="text-xs text-[var(--text-muted)]">·</span>
+            <span className="text-xs text-[var(--text-secondary)]">·</span>
             <button
               onClick={() => generateAnnotations(fullName, prNumber, mode, false, timeout, true, concurrency)}
               disabled={generating || clearingCache}
@@ -83,15 +83,15 @@ export function GenerateAnnotationsBanner({
             </button>
           </>
         )}
-        <span className="text-xs text-[var(--text-muted)]">·</span>
+        <span className="text-xs text-[var(--text-secondary)]">·</span>
         <button
           onClick={() => clearCache(fullName, prNumber)}
           disabled={generating || clearingCache}
-          className="text-xs text-[var(--text-muted)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--error-text)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-xs text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer underline hover:text-[var(--error-text)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {clearingCache ? 'Clearing...' : 'Clear cache'}
         </button>
-        {generating && <><ProgressDisplay /> <span className="text-xs text-[var(--text-muted)]">{elapsed}</span></>}
+        {generating && <><ProgressDisplay /> <span className="text-xs text-[var(--text-secondary)]">{elapsed}</span></>}
         {generateError && (
           <span className="text-xs text-[var(--error-text)]">{generateError}</span>
         )}
@@ -134,7 +134,7 @@ export function GenerateAnnotationsBanner({
             onBlur={() => { const v = Math.max(30, Math.min(1800, Number(timeoutInput) || 300)); setTimeout_(v); setTimeoutInput(String(v)); }}
             className="w-16 px-1.5 py-1 text-xs border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-secondary)]"
           />
-          <span className="text-xs text-[var(--text-muted)]">s</span>
+          <span className="text-xs text-[var(--text-secondary)]">s</span>
         </div>
         <div className="flex items-center gap-1">
           <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">concurrency:</span>
@@ -158,7 +158,7 @@ export function GenerateAnnotationsBanner({
         >
           {generating ? 'Generating...' : 'Generate Annotations'}
         </button>
-        {generating && <><ProgressDisplay /> <span className="text-xs text-[var(--text-muted)]">{elapsed}</span></>}
+        {generating && <><ProgressDisplay /> <span className="text-xs text-[var(--text-secondary)]">{elapsed}</span></>}
       </div>
 
       {generateError && (

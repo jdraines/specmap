@@ -71,7 +71,7 @@ export function CommentThread({ thread, fullName, prNumber }: CommentThreadProps
   return (
     <div className={`text-sm ${thread.is_resolved ? 'opacity-60' : ''}`}>
       {thread.is_resolved && (
-        <div className="text-xs text-[var(--text-muted)] mb-1">(resolved)</div>
+        <div className="text-xs text-[var(--text-secondary)] mb-1">(resolved)</div>
       )}
       {thread.is_outdated && (
         <div className="text-xs text-[var(--warning-text)] mb-1">(outdated)</div>
@@ -116,7 +116,7 @@ export function CommentThread({ thread, fullName, prNumber }: CommentThreadProps
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-xs">
                 <span className="font-medium text-[var(--text-primary)]">{comment.author_login}</span>
-                <span className="text-[var(--text-muted)]">{timeAgo(comment.created_at)}</span>
+                <span className="text-[var(--text-secondary)]">{timeAgo(comment.created_at)}</span>
               </div>
               <div className="text-[var(--text-secondary)] mt-0.5 whitespace-pre-wrap break-words">
                 {comment.body}

@@ -1626,243 +1626,227 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             if existing_cr and existing_cr.get("head_sha") == head_sha:
                 return existing_cr
 
-        # Load annotations
-        specmap_data = await _load_annotations(
-            request, provider, token, owner, repo, branch, head_sha,
-        )
-        annotations_list = specmap_data.get("annotations", []) if specmap_data else []
-
-        # Fetch file patches
-        file_patches = await provider.list_pull_files(
-            _http(request), token, owner, repo, number,
-        )
-
-        # Collect spec files and fetch content
-        spec_files: set[str] = set()
-        for ann in annotations_list:
-            for ref in ann.get("refs", []):
-                sf = ref.get("spec_file", "")
-                if sf:
-                    spec_files.add(sf)
-
-        spec_contents: dict[str, str] = {}
-        for sf in spec_files:
+        async def _stream_review():
             try:
-                raw = await provider.get_file_content(
-                    _http(request), token, owner, repo, sf, head_sha,
+                yield _sse("progress", {"phase": "preparing", "detail": "Loading annotations and file patches..."})
+
+                specmap_data = await _load_annotations(
+                    request, provider, token, owner, repo, branch, head_sha,
                 )
-                spec_contents[sf] = raw.decode("utf-8", errors="replace")
-            except ForgeNotFound:
-                pass
+                annotations_list = specmap_data.get("annotations", []) if specmap_data else []
 
-        # Generate rich patches with configurable context for the LLM prompt
-        base_sha = p.get("base_sha", "")
-        changed_files = [fp["filename"] for fp in file_patches]
-        file_patches_map = {
-            fp["filename"]: fp.get("patch", "")
-            for fp in file_patches
-            if fp.get("patch")
-        }
-        chat_model = _build_chat_model(cfg.core)
-        chunk_threshold = body.get("chunk_threshold", 500)
-
-        # Shared helper: enrich a set of patches with N-line context
-        async def _enrich_patches(patches: list[dict]) -> list[dict]:
-            if not base_sha:
-                return patches
-            rich_map = await _generate_rich_patches(
-                provider, _http(request), token, owner, repo,
-                patches, head_sha, base_sha, context_lines,
-            )
-            result = []
-            for fp in patches:
-                rich_fp = dict(fp)
-                if fp["filename"] in rich_map:
-                    rich_fp["patch"] = rich_map[fp["filename"]]
-                result.append(rich_fp)
-            return result
-
-        # Shared helper: build deps for a chunk
-        def _make_deps(chunk_files: list[str]) -> CodeReviewDeps:
-            return CodeReviewDeps(
-                provider=provider,
-                http_client=_http(request),
-                token=token,
-                owner=owner,
-                repo=repo,
-                head_sha=head_sha,
-                annotations=annotations_list,
-                changed_files=changed_files,
-                file_patches=file_patches_map,
-            )
-
-        # Decide: single-pass or chunked pipeline
-        chunks = _chunk_file_patches(file_patches, chunk_threshold)
-
-        try:
-            if len(chunks) == 1:
-                # Single-pass review (small PR)
-                rich = await _enrich_patches(file_patches)
-                user_prompt = build_code_review_prompt(
-                    pr_title=p.get("title", ""),
-                    head_branch=p["head_branch"],
-                    base_branch=p["base_branch"],
-                    annotations=annotations_list,
-                    file_patches=rich,
-                    spec_contents=spec_contents,
-                    max_issues=max_issues,
-                    custom_prompt=custom_prompt,
-                )
-                result = await code_review_agent.run(
-                    user_prompt=user_prompt,
-                    model=chat_model,
-                    deps=_make_deps(changed_files),
-                )
-                review_data = result.output
-            else:
-                # Chunked pipeline (large PR)
-                logger.info(
-                    "Code review: chunking %d files into %d chunks (threshold=%d)",
-                    len(file_patches), len(chunks), chunk_threshold,
+                file_patches = await provider.list_pull_files(
+                    _http(request), token, owner, repo, number,
                 )
 
-                async def _review_chunk(chunk_patches: list[dict], chunk_idx: int):
-                    rich = await _enrich_patches(chunk_patches)
-                    chunk_files = [fp["filename"] for fp in chunk_patches]
-                    prompt = build_chunk_review_prompt(
+                spec_files: set[str] = set()
+                for ann in annotations_list:
+                    for ref in ann.get("refs", []):
+                        sf = ref.get("spec_file", "")
+                        if sf:
+                            spec_files.add(sf)
+
+                spec_contents: dict[str, str] = {}
+                for sf in spec_files:
+                    try:
+                        raw = await provider.get_file_content(
+                            _http(request), token, owner, repo, sf, head_sha,
+                        )
+                        spec_contents[sf] = raw.decode("utf-8", errors="replace")
+                    except ForgeNotFound:
+                        pass
+
+                base_sha = p.get("base_sha", "")
+                changed_files = [fp["filename"] for fp in file_patches]
+                file_patches_map = {
+                    fp["filename"]: fp.get("patch", "")
+                    for fp in file_patches
+                    if fp.get("patch")
+                }
+                chat_model = _build_chat_model(cfg.core)
+                chunk_threshold = body.get("chunk_threshold", 500)
+
+                async def _enrich_patches(patches: list[dict]) -> list[dict]:
+                    if not base_sha:
+                        return patches
+                    rich_map = await _generate_rich_patches(
+                        provider, _http(request), token, owner, repo,
+                        patches, head_sha, base_sha, context_lines,
+                    )
+                    result = []
+                    for fp in patches:
+                        rich_fp = dict(fp)
+                        if fp["filename"] in rich_map:
+                            rich_fp["patch"] = rich_map[fp["filename"]]
+                        result.append(rich_fp)
+                    return result
+
+                def _make_deps(chunk_files: list[str]) -> CodeReviewDeps:
+                    return CodeReviewDeps(
+                        provider=provider,
+                        http_client=_http(request),
+                        token=token,
+                        owner=owner,
+                        repo=repo,
+                        head_sha=head_sha,
+                        annotations=annotations_list,
+                        changed_files=changed_files,
+                        file_patches=file_patches_map,
+                    )
+
+                chunks = _chunk_file_patches(file_patches, chunk_threshold)
+
+                if len(chunks) == 1:
+                    yield _sse("progress", {"phase": "reviewing", "detail": "Reviewing PR..."})
+                    rich = await _enrich_patches(file_patches)
+                    user_prompt = build_code_review_prompt(
                         pr_title=p.get("title", ""),
                         head_branch=p["head_branch"],
                         base_branch=p["base_branch"],
-                        chunk_patches=rich,
-                        chunk_index=chunk_idx,
-                        total_chunks=len(chunks),
-                        all_changed_files=changed_files,
                         annotations=annotations_list,
+                        file_patches=rich,
                         spec_contents=spec_contents,
                         max_issues=max_issues,
                         custom_prompt=custom_prompt,
                     )
-                    r = await code_review_agent.run(
-                        user_prompt=prompt,
+                    result = await code_review_agent.run(
+                        user_prompt=user_prompt,
                         model=chat_model,
-                        deps=_make_deps(chunk_files),
+                        deps=_make_deps(changed_files),
                     )
-                    return r.output
+                    review_data = result.output
+                else:
+                    n = len(chunks)
+                    yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks in parallel...", "chunk": 0, "total_chunks": n})
 
-                # Stage 2: Parallel chunk reviews
-                chunk_results = await asyncio.gather(
-                    *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)]
-                )
+                    async def _review_chunk(chunk_patches: list[dict], chunk_idx: int):
+                        rich = await _enrich_patches(chunk_patches)
+                        chunk_files_inner = [fp["filename"] for fp in chunk_patches]
+                        prompt = build_chunk_review_prompt(
+                            pr_title=p.get("title", ""),
+                            head_branch=p["head_branch"],
+                            base_branch=p["base_branch"],
+                            chunk_patches=rich,
+                            chunk_index=chunk_idx,
+                            total_chunks=n,
+                            all_changed_files=changed_files,
+                            annotations=annotations_list,
+                            spec_contents=spec_contents,
+                            max_issues=max_issues,
+                            custom_prompt=custom_prompt,
+                        )
+                        r = await code_review_agent.run(
+                            user_prompt=prompt,
+                            model=chat_model,
+                            deps=_make_deps(chunk_files_inner),
+                        )
+                        return r.output
 
-                # Stage 3A: Flatten + programmatic dedup
-                all_issues: list[dict] = []
-                chunk_summaries: list[str] = []
-                for cr in chunk_results:
-                    chunk_summaries.append(cr.summary)
-                    for issue in cr.issues:
-                        all_issues.append({
-                            "issue_number": issue.issue_number,
+                    chunk_results = await asyncio.gather(
+                        *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)]
+                    )
+
+                    all_issues: list[dict] = []
+                    chunk_summaries: list[str] = []
+                    for cr in chunk_results:
+                        chunk_summaries.append(cr.summary)
+                        for issue in cr.issues:
+                            all_issues.append({
+                                "issue_number": issue.issue_number,
+                                "severity": issue.severity,
+                                "title": issue.title,
+                                "description": issue.description,
+                                "file": issue.file,
+                                "start_line": issue.start_line or 0,
+                                "end_line": issue.end_line or issue.start_line or 0,
+                                "suggested_fix": issue.suggested_fix,
+                                "category": issue.category,
+                                "reasoning": issue.reasoning,
+                            })
+
+                    deduped = _programmatic_dedup(all_issues)
+
+                    yield _sse("progress", {"phase": "consolidating", "detail": "Validating and consolidating issues..."})
+                    consolidation_prompt = build_consolidation_prompt(deduped, chunk_summaries)
+                    cons_result = await consolidation_agent.run(
+                        user_prompt=consolidation_prompt,
+                        model=chat_model,
+                    )
+                    review_data = cons_result.output
+
+                # Build changed lines set for filtering
+                import re as _re
+                changed_lines_by_file: dict[str, set[int]] = {}
+                for fp in file_patches:
+                    lines: set[int] = set()
+                    patch = fp.get("patch", "")
+                    current_line = 0
+                    for pline in patch.splitlines():
+                        hunk_match = _re.match(r"^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@", pline)
+                        if hunk_match:
+                            current_line = int(hunk_match.group(1))
+                            continue
+                        if pline.startswith("+") and not pline.startswith("+++"):
+                            lines.add(current_line)
+                            current_line += 1
+                        elif pline.startswith("-") and not pline.startswith("---"):
+                            pass
+                        else:
+                            current_line += 1
+                    if fp.get("status") == "added":
+                        lines = set(range(1, current_line + 1))
+                    changed_lines_by_file[fp["filename"]] = lines
+
+                issues = []
+                issue_num = 0
+                for issue in review_data.issues:
+                    start = issue.start_line or 0 if hasattr(issue, 'start_line') else issue.get("start_line", 0)
+                    end = issue.end_line or start if hasattr(issue, 'end_line') else issue.get("end_line", start)
+                    file_changed = changed_lines_by_file.get(
+                        issue.file if hasattr(issue, 'file') else issue.get("file", ""), set()
+                    )
+                    if start and not any(line in file_changed for line in range(start, end + 1)):
+                        continue
+                    issue_num += 1
+                    if hasattr(issue, 'severity'):
+                        issues.append({
+                            "issue_number": issue_num,
                             "severity": issue.severity,
                             "title": issue.title,
                             "description": issue.description,
                             "file": issue.file,
-                            "start_line": issue.start_line or 0,
-                            "end_line": issue.end_line or issue.start_line or 0,
+                            "start_line": start,
+                            "end_line": end,
                             "suggested_fix": issue.suggested_fix,
                             "category": issue.category,
                             "reasoning": issue.reasoning,
                         })
+                    else:
+                        issues.append({**issue, "issue_number": issue_num, "start_line": start, "end_line": end})
 
-                deduped = _programmatic_dedup(all_issues)
+                cr_data = {
+                    "version": 1,
+                    "branch": branch,
+                    "summary": review_data.summary,
+                    "issues": issues,
+                    "head_sha": head_sha,
+                    "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                    "updated_by": "server:generate",
+                }
 
-                # Stage 3B: LLM consolidation (validate + merge + order)
-                consolidation_prompt = build_consolidation_prompt(deduped, chunk_summaries)
-                cons_result = await consolidation_agent.run(
-                    user_prompt=consolidation_prompt,
-                    model=chat_model,
-                )
-                review_data = cons_result.output
+                crf = CodeReviewFile.model_validate(cr_data)
+                _get_file_mgr(request, owner, repo).save_code_review(crf)
 
-        except Exception as e:
-            raise HTTPError(500, f"Code review generation failed: {e}")
+                yield _sse("complete", cr_data)
 
-        # Build set of changed lines per file from the original API patches
-        import re as _re
-        changed_lines_by_file: dict[str, set[int]] = {}
-        for fp in file_patches:
-            lines: set[int] = set()
-            patch = fp.get("patch", "")
-            current_line = 0
-            for pline in patch.splitlines():
-                hunk_match = _re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", pline)
-                if hunk_match:
-                    current_line = int(hunk_match.group(1))
-                    continue
-                if pline.startswith("+") and not pline.startswith("+++"):
-                    lines.add(current_line)
-                    current_line += 1
-                elif pline.startswith("-") and not pline.startswith("---"):
-                    pass  # deleted lines don't advance new-file line counter
-                else:
-                    current_line += 1
-            if fp.get("status") == "added":
-                lines = set(range(1, current_line + 1))
-            changed_lines_by_file[fp["filename"]] = lines
+            except Exception as e:
+                yield _sse("error", {"message": str(e)})
 
-        # Filter out issues not on changed lines + renumber
-        issues = []
-        issue_num = 0
-        for issue in review_data.issues:
-            start = issue.start_line or 0 if hasattr(issue, 'start_line') else issue.get("start_line", 0)
-            end = issue.end_line or start if hasattr(issue, 'end_line') else issue.get("end_line", start)
-            file_changed = changed_lines_by_file.get(
-                issue.file if hasattr(issue, 'file') else issue.get("file", ""), set()
-            )
-            if start and not any(
-                line in file_changed
-                for line in range(start, end + 1)
-            ):
-                continue
-            issue_num += 1
-            # Handle both Pydantic model and dict (from consolidation)
-            if hasattr(issue, 'severity'):
-                issues.append({
-                    "issue_number": issue_num,
-                    "severity": issue.severity,
-                    "title": issue.title,
-                    "description": issue.description,
-                    "file": issue.file,
-                    "start_line": start,
-                    "end_line": end,
-                    "suggested_fix": issue.suggested_fix,
-                    "category": issue.category,
-                    "reasoning": issue.reasoning,
-                })
-            else:
-                issues.append({
-                    **issue,
-                    "issue_number": issue_num,
-                    "start_line": start,
-                    "end_line": end,
-                })
-
-        cr_data = {
-            "version": 1,
-            "branch": branch,
-            "summary": review_data.summary,
-            "issues": issues,
-            "head_sha": head_sha,
-            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%S.%fZ"
-            ),
-            "updated_by": "server:generate",
-        }
-
-        # Persist
-        crf = CodeReviewFile.model_validate(cr_data)
-        _get_file_mgr(request, owner, repo).save_code_review(crf)
-
-        return cr_data
+        return StreamingResponse(
+            _stream_review(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     async def _handle_code_review_chat(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)

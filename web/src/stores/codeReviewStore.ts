@@ -27,6 +27,7 @@ interface CodeReviewState {
   chatStreamContent: string;
   chatToolCalls: ToolCallInfo[];
   chatError: string | null;
+  generationProgress: string | null;
 
   setMaxIssues: (n: number) => void;
   setTimeout: (t: number) => void;
@@ -73,6 +74,7 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
   chatStreamContent: '',
   chatToolCalls: [],
   chatError: null,
+  generationProgress: null,
 
   setMaxIssues: (n) => {
     localStorage.setItem('specmap-cr-max-issues', JSON.stringify(n));
@@ -101,13 +103,17 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
 
     const controller = new AbortController();
     (get() as any)._generateController = controller;
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, generationProgress: 'Starting...' });
     try {
-      const cr = await codeReviewApi.generate(fullName, number, maxIssues, timeout, contextLines, chunkThreshold, customPrompt || undefined, force, controller.signal);
-      set({ review: cr, loading: false });
+      const cr = await codeReviewApi.generate(
+        fullName, number, maxIssues, timeout, contextLines, chunkThreshold,
+        customPrompt || undefined, force, controller.signal,
+        (progress) => set({ generationProgress: progress.detail }),
+      );
+      set({ review: cr, loading: false, generationProgress: null });
     } catch (e) {
       if (controller.signal.aborted) {
-        set({ loading: false, error: null });
+        set({ loading: false, error: null, generationProgress: null });
         return;
       }
       let msg: string;
@@ -116,7 +122,7 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
       } else {
         msg = e instanceof Error ? e.message : 'Failed to generate code review';
       }
-      set({ error: msg, loading: false });
+      set({ error: msg, loading: false, generationProgress: null });
     } finally {
       (get() as any)._generateController = null;
     }

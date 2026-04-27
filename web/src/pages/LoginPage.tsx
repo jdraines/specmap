@@ -82,21 +82,21 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--surface-0)]">
       <div className="bg-[var(--surface-1)] border border-[var(--border)] p-8 max-w-sm w-full text-center">
         <div className="text-lg font-semibold text-[var(--text-primary)] mb-1">
-          <span className="text-[var(--text-muted)]">&gt;</span> specmap
+          <span className="text-[var(--text-secondary)]">&gt;</span> specmap
           <span className="text-[var(--accent-text)]">_</span>
         </div>
-        <p className="text-sm text-[var(--text-muted)] mb-1">review PRs with spec annotations</p>
-        <p className="text-xs text-[var(--text-muted)] mb-6">
+        <p className="text-sm text-[var(--text-secondary)] mb-1">review PRs with spec annotations</p>
+        <p className="text-xs text-[var(--text-secondary)] mb-6">
           detected forge: <span className="text-[var(--text-secondary)]">{providerLabel}</span>
         </p>
 
         {savePath ? (
-          <p className="text-xs text-[var(--text-muted)] font-mono">
+          <p className="text-xs text-[var(--text-secondary)] font-mono">
             saved to {savePath}
           </p>
         ) : savePrompt ? (
           <div className="text-left">
-            <p className="text-xs text-[var(--text-muted)] mb-3">
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
               Save token for future sessions?
             </p>
             <div className="flex gap-2">
@@ -125,14 +125,14 @@ export function LoginPage() {
         ) : (
           <div className="text-left">
             {status?.setup_hint && (
-              <p className="text-xs text-[var(--text-muted)] mb-4 font-mono">{status.setup_hint}</p>
+              <p className="text-xs text-[var(--text-secondary)] mb-4 font-mono">{status.setup_hint}</p>
             )}
             <form onSubmit={handleTokenSubmit}>
-              <label className="block text-xs text-[var(--text-muted)] mb-1">
+              <label className="block text-xs text-[var(--text-secondary)] mb-1">
                 personal access token
               </label>
               {status?.token_hint && (
-                <p className="text-xs text-[var(--text-muted)] mb-2 font-mono opacity-70">
+                <p className="text-xs text-[var(--text-secondary)] mb-2 font-mono opacity-70">
                   {status.token_hint}
                 </p>
               )}
@@ -143,7 +143,7 @@ export function LoginPage() {
                 placeholder={provider === 'gitlab' ? 'glpat-...' : 'ghp_...'}
                 className="w-full px-3 py-1.5 text-sm bg-[var(--surface-0)] border border-[var(--border)] text-[var(--text-primary)] font-mono mb-3 outline-none focus:border-[var(--accent)]"
               />
-              <p className="text-xs text-[var(--text-muted)] mb-3">
+              <p className="text-xs text-[var(--text-secondary)] mb-3">
                 runs locally &middot; tokens are only sent to {providerLabel}
               </p>
               <button

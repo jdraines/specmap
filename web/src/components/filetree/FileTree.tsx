@@ -174,7 +174,7 @@ export function FileTree({ files, annotationsByFile, commentCountByFile, fileInd
 
   return (
     <div className="py-1">
-      <div className="px-2 py-1 text-[10px] text-[var(--text-muted)] uppercase tracking-wider">
+      <div className="px-2 py-1 text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">
         Changed files ({files.length})
       </div>
       {tree.children.map((child) => (

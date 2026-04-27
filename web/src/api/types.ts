@@ -199,3 +199,10 @@ export interface GenerateProgress {
   total_batches?: number;
   detail?: string;
 }
+
+export interface CodeReviewProgress {
+  phase: 'preparing' | 'reviewing' | 'consolidating';
+  detail: string;
+  chunk?: number;
+  total_chunks?: number;
+}

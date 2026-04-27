@@ -21,7 +21,7 @@ export function ReviewToolbar({ annotations, files, annotationsByFile }: ReviewT
         <span className="text-[var(--text-secondary)]">
           {annotationCount} annotation{annotationCount !== 1 ? 's' : ''} across{' '}
           {annotatedFiles} file{annotatedFiles !== 1 ? 's' : ''}
-          <span className="text-[var(--text-muted)]"> &middot; {files.length} changed</span>
+          <span className="text-[var(--text-secondary)]"> &middot; {files.length} changed</span>
         </span>
         <FileJumper files={files} annotationsByFile={annotationsByFile} />
         <button
@@ -37,7 +37,7 @@ export function ReviewToolbar({ annotations, files, annotationsByFile }: ReviewT
         </button>
       </div>
       <div className="flex items-center gap-1">
-        <span className="text-[var(--text-muted)] mr-2">layout:</span>
+        <span className="text-[var(--text-secondary)] mr-2">layout:</span>
         {(['inline', 'auto', 'side'] as const).map((mode) => (
           <button
             key={mode}
@@ -51,7 +51,7 @@ export function ReviewToolbar({ annotations, files, annotationsByFile }: ReviewT
             {mode}
           </button>
         ))}
-        <span className="text-[var(--text-muted)] ml-3">
+        <span className="text-[var(--text-secondary)] ml-3">
           <kbd className="px-1 py-0.5 border border-[var(--kbd-border)] bg-[var(--kbd-bg)] text-[10px]">?</kbd> keys
         </span>
       </div>

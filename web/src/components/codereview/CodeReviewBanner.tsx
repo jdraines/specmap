@@ -18,6 +18,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
     timeout,
     customPrompt,
     chunkThreshold,
+    generationProgress,
     available,
     setMaxIssues,
     setTimeout: setStoreTimeout,
@@ -44,7 +45,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
         <>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Code Review</h3>
-            <span className="text-xs text-[var(--text-muted)]">
+            <span className="text-xs text-[var(--text-secondary)]">
               {review.issues.length} issue{review.issues.length !== 1 ? 's' : ''} found
             </span>
           </div>
@@ -71,14 +72,14 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
               {loading ? 'Regenerating...' : 'Regenerate'}
             </button>
             {loading && (
-              <span className="text-xs text-[var(--text-muted)]">
-                <Spinner /> {elapsed}
+              <span className="text-xs text-[var(--text-secondary)]">
+                <Spinner /> {generationProgress || 'Generating...'} {elapsed}
               </span>
             )}
             {loading && (
               <button
                 onClick={cancelGenerate}
-                className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
+                className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
               >
                 Cancel
               </button>
@@ -131,7 +132,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
                 }}
                 className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
               />
-              <span className="text-[var(--text-muted)]">s</span>
+              <span className="text-[var(--text-secondary)]">s</span>
             </label>
             <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
               Chunk at:
@@ -148,7 +149,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
                 }}
                 className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
               />
-              <span className="text-[var(--text-muted)]">lines</span>
+              <span className="text-[var(--text-secondary)]">lines</span>
             </label>
             <button
               onClick={() => generate(fullName, prNumber)}
@@ -158,14 +159,14 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
               {loading ? 'Generating...' : 'Generate Code Review'}
             </button>
             {loading && (
-              <span className="text-xs text-[var(--text-muted)]">
-                <Spinner /> Generating code review... {elapsed}
+              <span className="text-xs text-[var(--text-secondary)]">
+                <Spinner /> {generationProgress || 'Generating code review...'} {elapsed}
               </span>
             )}
             {loading && (
               <button
                 onClick={cancelGenerate}
-                className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
+                className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
               >
                 Cancel
               </button>

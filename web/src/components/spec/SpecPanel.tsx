@@ -41,11 +41,11 @@ export function SpecPanel() {
             <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
               {modalRef.heading}
             </div>
-            <div className="text-xs text-[var(--text-muted)] truncate">{modalRef.spec_file}</div>
+            <div className="text-xs text-[var(--text-secondary)] truncate">{modalRef.spec_file}</div>
           </div>
           <button
             onClick={closeModal}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] ml-2 cursor-pointer bg-transparent border-0 text-sm"
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] ml-2 cursor-pointer bg-transparent border-0 text-sm"
           >
             [x]
           </button>

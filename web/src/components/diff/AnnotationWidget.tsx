@@ -43,10 +43,10 @@ interface AnnotationWidgetProps {
 export function AnnotationWidget({ annotation }: AnnotationWidgetProps) {
   return (
     <div
-      className="p-3 bg-[var(--annotation-bg)] border-l-2 border-[var(--annotation-border)] text-sm"
+      className="p-3 bg-[var(--annotation-bg)] border-l-2 border-[var(--annotation-border)] text-sm font-sans"
       data-annotation-id={annotation.id}
     >
-      <div className="text-xs text-[var(--text-muted)] mb-1">
+      <div className="text-xs text-[var(--text-secondary)] mb-1">
         L{annotation.start_line}-{annotation.end_line}
       </div>
       <AnnotationContent annotation={annotation} />

@@ -9,7 +9,7 @@ export function HunkExpander({ lineCount, onExpand, loading }: HunkExpanderProps
 
   return (
     <button
-      className="w-full text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--hover-bg)] bg-[var(--surface-2)] border-0 cursor-pointer py-1 px-2 text-center"
+      className="w-full text-xs text-[var(--text-secondary)] hover:text-[var(--text-secondary)] hover:bg-[var(--hover-bg)] bg-[var(--surface-2)] border-0 cursor-pointer py-1 px-2 text-center"
       onClick={(e) => {
         e.stopPropagation();
         onExpand();

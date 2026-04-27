@@ -41,7 +41,7 @@ export function NewCommentForm({ fullName, prNumber, path, line, onClose }: NewC
 
   return (
     <div className="p-3 bg-[var(--comment-bg)] border-l-2 border-[var(--comment-border)]">
-      <div className="text-xs text-[var(--text-muted)] mb-1">
+      <div className="text-xs text-[var(--text-secondary)] mb-1">
         New comment on L{line}
       </div>
       <textarea

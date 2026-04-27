@@ -1,4 +1,4 @@
-import type { ChatMessage, GenerateProgress, SpecmapFile } from './types';
+import type { ChatMessage, CodeReview, CodeReviewProgress, GenerateProgress, SpecmapFile } from './types';
 
 class ApiError extends Error {
   status: number;
@@ -210,6 +210,92 @@ export async function apiFetchChatSSE(
         }
       }
     }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function apiFetchCodeReviewSSE(
+  path: string,
+  body: unknown,
+  onProgress: (data: CodeReviewProgress) => void,
+  timeout: number = 600_000,
+  signal?: AbortSignal,
+): Promise<CodeReview> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+
+  try {
+    const resp = await fetch(path, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (resp.status === 401) {
+      window.location.href = '/';
+      throw new ApiError(401, 'Unauthorized');
+    }
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new ApiError(resp.status, text);
+    }
+
+    const contentType = resp.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      return (await resp.json()) as CodeReview;
+    }
+
+    const reader = resp.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: CodeReview | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop()!;
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        let eventType = 'message';
+        let data = '';
+
+        for (const line of part.split('\n')) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7);
+          } else if (line.startsWith('data: ')) {
+            data = line.slice(6);
+          }
+        }
+
+        if (!data) continue;
+        const parsed = JSON.parse(data);
+
+        if (eventType === 'progress') {
+          onProgress(parsed as CodeReviewProgress);
+        } else if (eventType === 'complete') {
+          result = parsed as CodeReview;
+        } else if (eventType === 'error') {
+          throw new ApiError(500, parsed.message ?? 'Code review generation failed');
+        }
+      }
+    }
+
+    if (!result) {
+      throw new ApiError(500, 'SSE stream ended without a complete event');
+    }
+    return result;
   } finally {
     clearTimeout(timer);
   }

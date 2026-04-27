@@ -27,7 +27,7 @@ export class ErrorBoundary extends Component<Props, State> {
         this.props.fallback ?? (
           <div className="p-8 text-center">
             <p className="text-[var(--error-text)] text-sm font-semibold">Something went wrong</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">{this.state.error.message}</p>
+            <p className="text-xs text-[var(--text-secondary)] mt-1">{this.state.error.message}</p>
           </div>
         )
       );

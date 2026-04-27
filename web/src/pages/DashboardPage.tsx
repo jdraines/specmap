@@ -65,7 +65,7 @@ export function DashboardPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">
+      <h1 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-4">
         repositories
       </h1>
 
@@ -78,7 +78,7 @@ export function DashboardPage() {
       />
 
       {items.length === 0 && !loading ? (
-        <div className="text-sm text-[var(--text-muted)] border border-[var(--border)] p-4">
+        <div className="text-sm text-[var(--text-secondary)] border border-[var(--border)] p-4">
           {debouncedSearch ? (
             <p>No repositories match &ldquo;{debouncedSearch}&rdquo;.</p>
           ) : (
@@ -108,13 +108,13 @@ export function DashboardPage() {
                       key={pr.number}
                       to={`/r/${r.full_name}/pull/${pr.number}`}
                       title={pr.title}
-                      className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] no-underline"
+                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] no-underline"
                     >
                       #{pr.number}
                     </Link>
                   ))}
                   {r.private && (
-                    <span className="text-[10px] text-[var(--text-muted)] border border-[var(--border)] px-1.5 py-0.5">
+                    <span className="text-[10px] text-[var(--text-secondary)] border border-[var(--border)] px-1.5 py-0.5">
                       private
                     </span>
                   )}
@@ -124,11 +124,11 @@ export function DashboardPage() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 text-sm text-[var(--text-muted)]">
+            <div className="flex items-center justify-between mt-4 text-sm text-[var(--text-secondary)]">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage <= 1}
-                className="px-3 py-1 border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-muted)] disabled:opacity-40 hover:bg-[var(--hover-bg)] disabled:hover:bg-[var(--bg-primary)]"
+                className="px-3 py-1 border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] disabled:opacity-40 hover:bg-[var(--hover-bg)] disabled:hover:bg-[var(--bg-primary)]"
               >
                 prev
               </button>
@@ -138,7 +138,7 @@ export function DashboardPage() {
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
-                className="px-3 py-1 border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-muted)] disabled:opacity-40 hover:bg-[var(--hover-bg)] disabled:hover:bg-[var(--bg-primary)]"
+                className="px-3 py-1 border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] disabled:opacity-40 hover:bg-[var(--hover-bg)] disabled:hover:bg-[var(--bg-primary)]"
               >
                 next
               </button>

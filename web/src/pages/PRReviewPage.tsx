@@ -46,7 +46,7 @@ function KeyboardHelpOverlay({ onClose, walkthroughActive }: { onClose: () => vo
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[9999] bg-[var(--surface-1)] border border-[var(--border)] shadow-xl p-6 w-80">
         <div className="flex justify-between items-center mb-4">
           <span className="text-sm font-semibold text-[var(--text-primary)]">keyboard shortcuts</span>
-          <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer text-sm">
+          <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer text-sm">
             [x]
           </button>
         </div>
@@ -56,7 +56,7 @@ function KeyboardHelpOverlay({ onClose, walkthroughActive }: { onClose: () => vo
               <kbd className="px-1.5 py-0.5 bg-[var(--kbd-bg)] border border-[var(--kbd-border)] text-[var(--text-secondary)]">
                 {key}
               </kbd>
-              <span className="text-[var(--text-muted)]">{desc}</span>
+              <span className="text-[var(--text-secondary)]">{desc}</span>
             </div>
           ))}
         </div>
@@ -202,7 +202,7 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
       <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-1">{pr.title}</h1>
       <p className="text-xs text-[var(--text-secondary)] mb-4">
         {pr.author_login} &middot; {pr.head_branch} &rarr; {pr.base_branch} &middot;{' '}
-        <span className="text-[var(--text-muted)]">{pr.head_sha.slice(0, 7)}</span>
+        <span className="text-[var(--text-secondary)]">{pr.head_sha.slice(0, 7)}</span>
         {files.length > 0 && (() => {
           const adds = files.reduce((s, f) => s + f.additions, 0);
           const dels = files.reduce((s, f) => s + f.deletions, 0);
@@ -213,7 +213,7 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
               {' '}
               <span className="text-[var(--delete-text)]">-{dels}</span>
               {' '}
-              <span className="text-[var(--text-muted)]">({adds + dels} lines across {files.length} files)</span>
+              <span className="text-[var(--text-secondary)]">({adds + dels} lines across {files.length} files)</span>
             </>
           );
         })()}

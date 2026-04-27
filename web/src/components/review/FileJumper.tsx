@@ -48,7 +48,7 @@ export function FileJumper({ files, annotationsByFile }: FileJumperProps) {
                 {annCount > 0 && (
                   <span className="text-[var(--accent)] whitespace-nowrap">{annCount}</span>
                 )}
-                <span className="whitespace-nowrap text-[var(--text-muted)] tabular-nums">
+                <span className="whitespace-nowrap text-[var(--text-secondary)] tabular-nums">
                   <span className="text-[var(--insert-text)]">+{f.additions}</span>
                   <span className="mx-0.5">/</span>
                   <span className="text-[var(--delete-text)]">-{f.deletions}</span>

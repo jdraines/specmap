@@ -69,7 +69,7 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
             >
               Start Walkthrough ({walkthrough.steps.length} steps)
             </button>
-            <span className="text-xs text-[var(--text-muted)]">
+            <span className="text-xs text-[var(--text-secondary)]">
               {familiarityOptions.find((o) => o.value === walkthrough.familiarity)?.label} · {walkthrough.depth}
             </span>
           </div>
@@ -119,14 +119,14 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
               </button>
             )}
             {loading && (
-              <span className="text-xs text-[var(--text-muted)]">
+              <span className="text-xs text-[var(--text-secondary)]">
                 <Spinner /> {elapsed}
               </span>
             )}
             {loading && (
               <button
                 onClick={cancelGenerate}
-                className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
+                className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
               >
                 Cancel
               </button>
@@ -187,7 +187,7 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
                 onBlur={() => { const v = Math.max(30, Math.min(1800, Number(timeoutInput) || 300)); setStoreTimeout(v); setTimeoutInput(String(v)); }}
                 className="w-16 px-1.5 py-1 text-xs border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-primary)]"
               />
-              <span className="text-xs text-[var(--text-muted)]">s</span>
+              <span className="text-xs text-[var(--text-secondary)]">s</span>
             </div>
           </div>
 
@@ -200,14 +200,14 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
               {loading ? 'Generating...' : 'Generate Walkthrough'}
             </button>
             {loading && (
-              <span className="text-xs text-[var(--text-muted)]">
+              <span className="text-xs text-[var(--text-secondary)]">
                 <Spinner /> Generating walkthrough... {elapsed}
               </span>
             )}
             {loading && (
               <button
                 onClick={cancelGenerate}
-                className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
+                className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--error-text)] bg-transparent border border-[var(--border)] cursor-pointer rounded"
               >
                 Cancel
               </button>

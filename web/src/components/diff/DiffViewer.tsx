@@ -43,7 +43,7 @@ function renderFile(
     return (
       <div key={file.filename} className="bg-[var(--surface-1)] border border-[var(--border)] p-4">
         <p className="text-sm text-[var(--text-secondary)]">{file.filename}</p>
-        <p className="text-xs text-[var(--text-muted)] mt-1">Binary or empty diff</p>
+        <p className="text-xs text-[var(--text-secondary)] mt-1">Binary or empty diff</p>
       </div>
     );
   }
@@ -89,7 +89,7 @@ export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, wa
   }, [files]);
 
   if (files.length === 0) {
-    return <p className="text-[var(--text-muted)]">No files changed.</p>;
+    return <p className="text-[var(--text-secondary)]">No files changed.</p>;
   }
 
   return (
@@ -97,13 +97,13 @@ export function DiffViewer({ files, annotationsByFile, mode, walkthroughStep, wa
       {specmapFiles.length > 0 && (
         <button
           onClick={() => setShowSpecmap(!showSpecmap)}
-          className="flex items-center gap-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-pointer bg-[var(--surface-2)] border border-[var(--border)] px-3 py-2 hover:border-[var(--text-muted)] w-full text-left"
+          className="flex items-center gap-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-secondary)] cursor-pointer bg-[var(--surface-2)] border border-[var(--border)] px-3 py-2 hover:border-[var(--text-muted)] w-full text-left"
         >
           <span className="w-3">{showSpecmap ? '-' : '+'}</span>
           <span>
             {showSpecmap ? 'hide' : 'show'} .specmap/ directory changes
           </span>
-          <span className="text-[var(--text-muted)]">
+          <span className="text-[var(--text-secondary)]">
             ({specmapFiles.length} file{specmapFiles.length !== 1 ? 's' : ''})
           </span>
         </button>

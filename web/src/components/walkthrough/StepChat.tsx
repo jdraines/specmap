@@ -79,7 +79,7 @@ export function StepChat({ step, fullName, prNumber }: StepChatProps) {
                       : 'bg-[var(--surface-1)] text-[var(--text-primary)] border border-[var(--border)]'
                   }`}
                 >
-                  <div className="text-[10px] text-[var(--text-muted)] mb-2 font-medium uppercase tracking-wide">
+                  <div className="text-[10px] text-[var(--text-secondary)] mb-2 font-medium uppercase tracking-wide">
                     {msg.role === 'user' ? 'You' : 'Assistant'}
                   </div>
                   {msg.role === 'assistant' ? (
@@ -95,7 +95,7 @@ export function StepChat({ step, fullName, prNumber }: StepChatProps) {
               {/* Streaming response */}
               {isStreaming && (
                 <div className="text-sm rounded px-4 py-3 bg-[var(--surface-1)] text-[var(--text-primary)] border border-[var(--border)]">
-                  <div className="text-[10px] text-[var(--text-muted)] mb-2 font-medium uppercase tracking-wide">
+                  <div className="text-[10px] text-[var(--text-secondary)] mb-2 font-medium uppercase tracking-wide">
                     Assistant
                   </div>
                   {/* Tool call indicators */}
@@ -104,7 +104,7 @@ export function StepChat({ step, fullName, prNumber }: StepChatProps) {
                       {chatToolCalls.map((tc, i) => (
                         <div
                           key={i}
-                          className="text-[11px] text-[var(--text-muted)] italic"
+                          className="text-[11px] text-[var(--text-secondary)] italic"
                         >
                           {tc.result ? (
                             <details className="cursor-pointer">

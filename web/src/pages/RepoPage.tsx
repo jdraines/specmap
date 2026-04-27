@@ -29,11 +29,11 @@ export function RepoPage({ fullName }: RepoPageProps) {
   return (
     <div className="max-w-3xl mx-auto">
       <Breadcrumb items={[{ label: 'repos', to: '/' }, { label: fullName }]} />
-      <h1 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">
+      <h1 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-4">
         open pull requests
       </h1>
       {pullList.length === 0 ? (
-        <p className="text-[var(--text-muted)]">No open pull requests.</p>
+        <p className="text-[var(--text-secondary)]">No open pull requests.</p>
       ) : (
         <div className="border border-[var(--border)] divide-y divide-[var(--border)]">
           {pullList.map((pr) => (
@@ -42,10 +42,10 @@ export function RepoPage({ fullName }: RepoPageProps) {
               to={`/r/${fullName}/pull/${pr.number}`}
               className="flex items-start gap-3 px-4 py-2.5 hover:bg-[var(--hover-bg)] no-underline"
             >
-              <span className="text-[var(--text-muted)] text-xs pt-0.5">#{pr.number}</span>
+              <span className="text-[var(--text-secondary)] text-xs pt-0.5">#{pr.number}</span>
               <div className="min-w-0 flex-1">
                 <div className="text-sm text-[var(--text-primary)] truncate">{pr.title}</div>
-                <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                <div className="text-xs text-[var(--text-secondary)] mt-0.5">
                   {pr.author_login} &middot; {pr.head_branch} &rarr; {pr.base_branch}
                 </div>
               </div>

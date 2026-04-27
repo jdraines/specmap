@@ -13,8 +13,8 @@ export function SideAnnotation({ annotation, top }: SideAnnotationProps) {
       style={{ top }}
       data-annotation-id={annotation.id}
     >
-      <div className="border-l-2 border-[var(--annotation-border)] bg-[var(--annotation-bg)] p-3 text-sm">
-        <div className="text-xs text-[var(--text-muted)] mb-1">
+      <div className="border-l-2 border-[var(--annotation-border)] bg-[var(--annotation-bg)] p-3 text-sm font-sans">
+        <div className="text-xs text-[var(--text-secondary)] mb-1">
           L{annotation.start_line}-{annotation.end_line}
         </div>
         <AnnotationContent annotation={annotation} />

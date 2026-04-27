@@ -12,7 +12,7 @@ export function LoadingSpinner() {
 
   return (
     <div className="flex items-center justify-center p-8">
-      <span className="text-lg text-[var(--text-muted)]">{FRAMES[frame]}</span>
+      <span className="text-lg text-[var(--text-secondary)]">{FRAMES[frame]}</span>
     </div>
   );
 }
