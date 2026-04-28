@@ -29,7 +29,7 @@ CodeReviewDeps = ChatDeps
 review_agent = Agent(
     system_prompt=_CODE_REVIEW_SYSTEM,
     output_type=CodeReviewResponse,
-    retries=2,
+    retries=4,
 )
 
 # Phase 2: Cross-boundary verification — targeted tool use with strict budget
@@ -37,14 +37,14 @@ cross_boundary_agent = Agent(
     deps_type=CodeReviewDeps,
     system_prompt=_CROSS_BOUNDARY_SYSTEM,
     output_type=CodeReviewResponse,
-    retries=2,
+    retries=4,
 )
 
 # Phase 3: Consolidation — toolless dedup/validation
 consolidation_agent = Agent(
     system_prompt=_CONSOLIDATION_SYSTEM,
     output_type=CodeReviewResponse,
-    retries=2,
+    retries=4,
 )
 
 

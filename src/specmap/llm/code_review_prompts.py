@@ -318,9 +318,12 @@ Scan the diff for:
 For each change you identify, use grep_codebase to find callers/consumers OUTSIDE the \
 reviewed files. If any caller was not updated to match the change, flag it as an issue.
 
-You have a strict budget of tool calls. Plan efficiently:
-- Batch file reads using the `paths` parameter
+You have a strict budget of 10 requests. Each tool use costs 2 requests (one to \
+call the tool, one to process results). That means ~5 tool uses maximum. Plan \
+carefully:
+- Batch file reads using the `paths` parameter to read multiple files in one call
 - Use targeted grep patterns (function names, class names) not broad searches
+- Produce your final output before exhausting your budget
 - If you find no cross-boundary issues, return an empty issues list with a brief summary
 
 Do NOT re-review the code for correctness, style, or design — that was already done. \

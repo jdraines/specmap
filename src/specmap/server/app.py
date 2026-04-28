@@ -1667,48 +1667,19 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
         async def _run_two_phase_review(prompt, chunk_patches, model, deps, all_changed_files):
             """Two-phase review: toolless analysis + targeted cross-boundary check."""
-            from pydantic_ai.usage import UsageLimits
-
-            # Phase 1: Toolless review (single LLM call, rescue on failure)
+            # Phase 1: Toolless review (rescue on failure, returns None if all fails)
             logger.info("Phase 1: toolless review (~%d estimated tokens)", len(prompt) // 4)
             p1_output = await resilient_agent_call(
                 review_agent, prompt, model,
-                rescue_agent=review_agent,  # rescue with same toolless agent
-                usage_limits=UsageLimits(request_limit=3),
+                rescue_agent=review_agent,
             )
             p1_issues = []
-            for iss in p1_output.issues:
-                p1_issues.append({
-                    "issue_number": iss.issue_number,
-                    "severity": iss.severity,
-                    "title": iss.title,
-                    "description": iss.description,
-                    "file": iss.file,
-                    "start_line": iss.start_line or 0,
-                    "end_line": iss.end_line or iss.start_line or 0,
-                    "suggested_fix": iss.suggested_fix,
-                    "category": iss.category,
-                    "reasoning": iss.reasoning,
-                })
-            logger.info("Phase 1 found %d issues", len(p1_issues))
-
-            # Phase 2: Cross-boundary verification (targeted tool use)
-            cb_prompt = build_cross_boundary_prompt(
-                chunk_patches=chunk_patches,
-                phase1_issues=p1_issues,
-                all_changed_files=all_changed_files,
-            )
-            logger.info("Phase 2: cross-boundary check (~%d estimated tokens)", len(cb_prompt) // 4)
-            try:
-                p2_output = await resilient_agent_call(
-                    cross_boundary_agent, cb_prompt, model,
-                    rescue_agent=review_agent,  # toolless rescue
-                    deps=deps,
-                    usage_limits=UsageLimits(request_limit=10),
-                )
-                for iss in p2_output.issues:
+            summary = ""
+            if p1_output is not None:
+                summary = p1_output.summary
+                for iss in p1_output.issues:
                     p1_issues.append({
-                        "issue_number": len(p1_issues) + 1,
+                        "issue_number": iss.issue_number,
                         "severity": iss.severity,
                         "title": iss.title,
                         "description": iss.description,
@@ -1719,11 +1690,43 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         "category": iss.category,
                         "reasoning": iss.reasoning,
                     })
-                logger.info("Phase 2 found %d additional issues", len(p2_output.issues))
+                logger.info("Phase 1 found %d issues", len(p1_issues))
+            else:
+                logger.warning("Phase 1 failed entirely — proceeding with empty issues")
+
+            # Phase 2: Cross-boundary verification (soft limit 10, rescue on failure)
+            cb_prompt = build_cross_boundary_prompt(
+                chunk_patches=chunk_patches,
+                phase1_issues=p1_issues,
+                all_changed_files=all_changed_files,
+            )
+            logger.info("Phase 2: cross-boundary check (~%d estimated tokens)", len(cb_prompt) // 4)
+            try:
+                p2_output = await resilient_agent_call(
+                    cross_boundary_agent, cb_prompt, model,
+                    rescue_agent=review_agent,
+                    deps=deps,
+                    soft_request_limit=10,
+                )
+                if p2_output is not None:
+                    for iss in p2_output.issues:
+                        p1_issues.append({
+                            "issue_number": len(p1_issues) + 1,
+                            "severity": iss.severity,
+                            "title": iss.title,
+                            "description": iss.description,
+                            "file": iss.file,
+                            "start_line": iss.start_line or 0,
+                            "end_line": iss.end_line or iss.start_line or 0,
+                            "suggested_fix": iss.suggested_fix,
+                            "category": iss.category,
+                            "reasoning": iss.reasoning,
+                        })
+                    logger.info("Phase 2 found %d additional issues", len(p2_output.issues))
             except Exception as e:
                 logger.warning("Phase 2 cross-boundary check failed: %s", e)
 
-            return p1_output.summary, p1_issues
+            return summary, p1_issues
 
         async def _stream_review():
             try:
@@ -1892,26 +1895,49 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                             return summary, issues
 
                     chunk_results = await asyncio.gather(
-                        *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)]
+                        *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)],
+                        return_exceptions=True,
                     )
 
                     all_issues: list[dict] = []
                     chunk_summaries: list[str] = []
-                    for summary, issues in chunk_results:
+                    failed_chunks: list[int] = []
+                    for i, result in enumerate(chunk_results):
+                        if isinstance(result, BaseException):
+                            failed_chunks.append(i + 1)
+                            logger.warning("Chunk %d/%d failed: %s", i + 1, n, result)
+                            continue
+                        summary, issues = result
                         chunk_summaries.append(summary)
                         all_issues.extend(issues)
+
+                    if not chunk_summaries and not all_issues:
+                        yield _sse("error", {"message": "All review chunks failed"})
+                        return
+
+                    if failed_chunks:
+                        chunk_summaries.append(
+                            f"Note: Chunks {', '.join(str(c) for c in failed_chunks)} "
+                            f"of {n} failed during review and are not included."
+                        )
 
                     deduped = _programmatic_dedup(all_issues)
 
                     yield _sse("progress", {"phase": "consolidating", "detail": "Validating and consolidating issues..."})
                     consolidation_prompt = build_consolidation_prompt(deduped, chunk_summaries)
                     logger.info("Consolidation prompt: ~%d estimated tokens (%d issues)", _estimate_tokens(consolidation_prompt), len(deduped))
-                    from pydantic_ai.usage import UsageLimits as _UL
                     review_data = await resilient_agent_call(
                         consolidation_agent, consolidation_prompt, chat_model,
                         rescue_agent=consolidation_agent,
-                        usage_limits=_UL(request_limit=3),
                     )
+                    if review_data is None:
+                        logger.warning("Consolidation failed — using raw deduped issues")
+                        # Create a simple namespace with deduped issues
+                        class _FallbackResult:
+                            pass
+                        review_data = _FallbackResult()
+                        review_data.summary = " ".join(chunk_summaries)
+                        review_data.issues = deduped
 
                 # Build changed lines set for filtering
                 import re as _re
