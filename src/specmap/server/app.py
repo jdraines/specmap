@@ -1664,13 +1664,12 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                 return existing_cr
 
         async def _run_review_with_wrapup(agent, prompt, model, deps, request_limit=50, wrapup_buffer=5):
-            """Run a review agent, injecting wrap-up instructions before hitting the limit."""
+            """Run a review agent, breaking out for a separate wrap-up call before hitting the limit."""
             from pydantic_ai.usage import UsageLimits
-            from pydantic_ai.messages import ModelRequest, UserPromptPart
 
-            limits = UsageLimits(request_limit=request_limit)
-            wrapup_injected = False
             wrapup_threshold = request_limit - wrapup_buffer
+            limits = UsageLimits(request_limit=request_limit)
+            messages = None
 
             async with agent.iter(
                 user_prompt=prompt,
@@ -1678,34 +1677,32 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                 deps=deps,
                 usage_limits=limits,
             ) as agent_run:
-                async for node in agent_run:
+                async for _node in agent_run:
                     usage = agent_run.usage()
-                    if not wrapup_injected and usage.requests >= wrapup_threshold:
-                        wrapup_injected = True
+                    if usage.requests >= wrapup_threshold:
                         logger.info(
-                            "Code review approaching limit (%d/%d requests), injecting wrap-up",
+                            "Code review at %d/%d requests — breaking for wrap-up",
                             usage.requests, request_limit,
                         )
-                        # Inject a user message into the history telling the agent to finish
-                        agent_run.all_messages().append(
-                            ModelRequest(parts=[UserPromptPart(content=(
-                                "IMPORTANT: You are approaching the request limit. "
-                                "Stop making tool calls immediately. Produce your final "
-                                "CodeReviewResponse now with the issues you have found so far."
-                            ))])
-                        )
+                        messages = agent_run.all_messages()
+                        break
 
+            # If the agent finished normally (under threshold), return its result
             if agent_run.result is not None:
                 return agent_run.result.output
 
-            # Fallback: if iter ended without result (shouldn't happen), do a final call
-            logger.warning("Review iter ended without result, doing final wrapup call")
+            # Wrap-up: separate call with the conversation so far, no tools
+            logger.info("Running wrap-up call with %d messages from interrupted run", len(messages or []))
             wrapup = await agent.run(
                 user_prompt=(
-                    "Produce your final CodeReviewResponse now based on what "
-                    "you have already analyzed. Do not call any more tools."
+                    "You have used most of your allowed tool calls. "
+                    "Based on everything you have analyzed so far, produce your final "
+                    "CodeReviewResponse now. Do not call any more tools — just output "
+                    "your structured review with whatever issues you have found."
                 ),
+                message_history=messages,
                 model=model,
+                usage_limits=UsageLimits(request_limit=wrapup_buffer),
             )
             return wrapup.output
 
