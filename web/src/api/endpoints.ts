@@ -1,6 +1,6 @@
 import { apiFetch, apiFetchSSE, apiFetchChatSSE, apiFetchCodeReviewSSE } from './client';
 import type { ChatSSECallbacks } from './client';
-import type { CodeReviewProgress } from './types';
+import type { CodeReview, CodeReviewProgress } from './types';
 import type {
   User,
   Repository,
@@ -156,5 +156,13 @@ export const codeReview = {
       `/api/v1/repos/${fullName}/pulls/${number}/code-review/chat`,
       { issue_number: issueNumber, message },
       callbacks,
+    ),
+  dismiss: (fullName: string, number: number, issueNumber: number) =>
+    apiFetch<CodeReview>(
+      `/api/v1/repos/${fullName}/pulls/${number}/code-review/dismiss`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ issue_number: issueNumber }),
+      },
     ),
 };

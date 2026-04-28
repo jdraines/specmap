@@ -27,7 +27,7 @@ const categoryLabels: Record<string, string> = {
 };
 
 export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: CodeReviewIssueCardProps) {
-  const { nextIssue, prevIssue, exit, currentIssue } = useCodeReviewStore();
+  const { nextIssue, prevIssue, exit, currentIssue, dismissIssue } = useCodeReviewStore();
   const [showFix, setShowFix] = useState(false);
   const [showReasoning, setShowReasoning] = useState(false);
 
@@ -53,12 +53,20 @@ export function CodeReviewIssueCard({ issue, totalIssues, fullName, prNumber }: 
             </span>
           )}
         </span>
-        <button
-          onClick={exit}
-          className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-secondary)] bg-transparent border-0 cursor-pointer"
-        >
-          exit review
-        </button>
+        <span className="flex items-center gap-3">
+          <button
+            onClick={() => dismissIssue(fullName, prNumber, issue.issue_number)}
+            className="text-xs text-[var(--error-text)] hover:underline bg-transparent border-0 cursor-pointer"
+          >
+            dismiss
+          </button>
+          <button
+            onClick={exit}
+            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer"
+          >
+            exit review
+          </button>
+        </span>
       </div>
 
       <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">{issue.title}</h3>

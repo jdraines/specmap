@@ -41,6 +41,7 @@ interface CodeReviewState {
   nextIssue: () => void;
   prevIssue: () => void;
   goToIssue: (issue: number) => void;
+  dismissIssue: (fullName: string, prNumber: number, issueNumber: number) => Promise<void>;
   checkAvailable: () => Promise<void>;
   reset: () => void;
   toggleChat: (issueNumber: number) => void;
@@ -158,6 +159,25 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
     const { review } = get();
     if (review && issue >= 0 && issue < review.issues.length) {
       set({ currentIssue: issue });
+    }
+  },
+
+  dismissIssue: async (fullName, prNumber, issueNumber) => {
+    try {
+      const updated = await codeReviewApi.dismiss(fullName, prNumber, issueNumber);
+      const { currentIssue } = get();
+      let newIdx = currentIssue;
+      if (updated.issues.length === 0) {
+        set({ review: updated, active: false, currentIssue: 0 });
+        return;
+      }
+      if (newIdx >= updated.issues.length) {
+        newIdx = updated.issues.length - 1;
+      }
+      set({ review: updated, currentIssue: newIdx });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to dismiss issue';
+      set({ error: msg });
     }
   },
 
