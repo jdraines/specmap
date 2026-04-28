@@ -30,6 +30,7 @@ from pydantic_ai.messages import (
 )
 
 from specmap.llm.chat_agent import ChatDeps, chat_agent
+from specmap.llm.retry import with_rate_limit_retry
 from specmap.llm.code_review_agent import CodeReviewDeps, code_review_agent, consolidation_agent
 from specmap.llm.code_review_prompts import build_code_review_prompt, build_chunk_review_prompt, build_consolidation_prompt
 from specmap.llm.chat_prompts import build_chat_messages
@@ -574,6 +575,40 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         cfg = _cfg(request)
         has_llm = bool(cfg.core.api_key)
         return {"walkthrough": has_llm, "annotations": has_llm, "code_review": has_llm}
+
+    # --- Settings ---
+
+    _SAFE_SETTINGS = {"model"}
+
+    @app.get("/api/v1/settings")
+    async def get_settings(request: Request):
+        _get_current_user(request)
+        cfg = _cfg(request)
+        return {"model": cfg.core.model}
+
+    @app.post("/api/v1/settings")
+    async def update_settings(request: Request):
+        _get_current_user(request)
+        body = await request.json()
+
+        model_val = str(body.get("model", "")).strip() if "model" in body else ""
+        if not model_val:
+            raise HTTPError(400, "No valid settings provided")
+
+        # Save to user config file (merges with existing)
+        save_cfg = SpecmapConfig(model=model_val)
+        save_user_config(save_cfg)
+
+        # Reload the running config so changes take effect immediately
+        cfg = _cfg(request)
+        from dataclasses import replace
+        new_core = replace(cfg.core, model=model_val)
+        new_server_cfg = type(cfg)(
+            **{**vars(cfg), "core": new_core}
+        )
+        request.app.state.config = new_server_cfg
+
+        return {"model": new_core.model}
 
     # --- Data routes ---
 
@@ -1162,6 +1197,8 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         )
 
         llm_client = LLMClient(cfg.core)
+        prompt_text = " ".join(m.get("content", "") for m in messages)
+        logger.info("Walkthrough prompt: ~%d estimated tokens", len(prompt_text) // 4)
         result = await llm_client.complete(messages, response_format=WalkthroughResponse)
 
         # Build response
@@ -1489,7 +1526,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         file_patches: list[dict],
         head_sha: str,
         base_sha: str,
-        context_lines: int = 10,
+        context_lines: int = 5,
     ) -> dict[str, str]:
         """Generate unified diffs with configurable context lines.
 
@@ -1610,7 +1647,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         body = await request.json()
         max_issues = body.get("max_issues", 20)
         custom_prompt = body.get("custom_prompt", "")
-        context_lines = body.get("context_lines", 10)
+        context_lines = body.get("context_lines", 5)
         force = body.get("force", False)
 
         # Fetch PR
@@ -1696,6 +1733,9 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
                 chunks = _chunk_file_patches(file_patches, chunk_threshold)
 
+                def _estimate_tokens(text: str) -> int:
+                    return len(text) // 4
+
                 if len(chunks) == 1:
                     yield _sse("progress", {"phase": "reviewing", "detail": "Reviewing PR..."})
                     rich = await _enrich_patches(file_patches)
@@ -1709,38 +1749,52 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         max_issues=max_issues,
                         custom_prompt=custom_prompt,
                     )
-                    result = await code_review_agent.run(
+                    logger.info("Code review prompt: ~%d estimated tokens", _estimate_tokens(user_prompt))
+                    result = await with_rate_limit_retry(lambda: code_review_agent.run(
                         user_prompt=user_prompt,
                         model=chat_model,
                         deps=_make_deps(changed_files),
-                    )
+                    ))
                     review_data = result.output
                 else:
                     n = len(chunks)
-                    yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks in parallel...", "chunk": 0, "total_chunks": n})
+                    yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks (max 4 concurrent)...", "chunk": 0, "total_chunks": n})
+
+                    _chunk_sem = asyncio.Semaphore(4)
 
                     async def _review_chunk(chunk_patches: list[dict], chunk_idx: int):
-                        rich = await _enrich_patches(chunk_patches)
-                        chunk_files_inner = [fp["filename"] for fp in chunk_patches]
-                        prompt = build_chunk_review_prompt(
-                            pr_title=p.get("title", ""),
-                            head_branch=p["head_branch"],
-                            base_branch=p["base_branch"],
-                            chunk_patches=rich,
-                            chunk_index=chunk_idx,
-                            total_chunks=n,
-                            all_changed_files=changed_files,
-                            annotations=annotations_list,
-                            spec_contents=spec_contents,
-                            max_issues=max_issues,
-                            custom_prompt=custom_prompt,
-                        )
-                        r = await code_review_agent.run(
-                            user_prompt=prompt,
-                            model=chat_model,
-                            deps=_make_deps(chunk_files_inner),
-                        )
-                        return r.output
+                        async with _chunk_sem:
+                            rich = await _enrich_patches(chunk_patches)
+                            chunk_files_inner = [fp["filename"] for fp in chunk_patches]
+                            # Filter specs to only those referenced by this chunk's annotations
+                            chunk_ann = [a for a in annotations_list if a.get("file") in chunk_files_inner]
+                            chunk_spec_files: set[str] = set()
+                            for ann in chunk_ann:
+                                for ref in ann.get("refs", []):
+                                    sf = ref.get("spec_file", "")
+                                    if sf:
+                                        chunk_spec_files.add(sf)
+                            chunk_specs = {k: v for k, v in spec_contents.items() if k in chunk_spec_files}
+                            prompt = build_chunk_review_prompt(
+                                pr_title=p.get("title", ""),
+                                head_branch=p["head_branch"],
+                                base_branch=p["base_branch"],
+                                chunk_patches=rich,
+                                chunk_index=chunk_idx,
+                                total_chunks=n,
+                                all_changed_files=changed_files,
+                                annotations=chunk_ann,
+                                spec_contents=chunk_specs,
+                                max_issues=max_issues,
+                                custom_prompt=custom_prompt,
+                            )
+                            logger.info("Chunk %d/%d prompt: ~%d estimated tokens", chunk_idx + 1, n, _estimate_tokens(prompt))
+                            r = await with_rate_limit_retry(lambda: code_review_agent.run(
+                                user_prompt=prompt,
+                                model=chat_model,
+                                deps=_make_deps(chunk_files_inner),
+                            ))
+                            return r.output
 
                     chunk_results = await asyncio.gather(
                         *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)]
@@ -1768,10 +1822,11 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
                     yield _sse("progress", {"phase": "consolidating", "detail": "Validating and consolidating issues..."})
                     consolidation_prompt = build_consolidation_prompt(deduped, chunk_summaries)
-                    cons_result = await consolidation_agent.run(
+                    logger.info("Consolidation prompt: ~%d estimated tokens (%d issues)", _estimate_tokens(consolidation_prompt), len(deduped))
+                    cons_result = await with_rate_limit_retry(lambda: consolidation_agent.run(
                         user_prompt=consolidation_prompt,
                         model=chat_model,
-                    )
+                    ))
                     review_data = cons_result.output
 
                 # Build changed lines set for filtering

@@ -200,6 +200,10 @@ export interface GenerateProgress {
   detail?: string;
 }
 
+export interface Settings {
+  model: string;
+}
+
 export interface CodeReviewProgress {
   phase: 'preparing' | 'reviewing' | 'consolidating';
   detail: string;

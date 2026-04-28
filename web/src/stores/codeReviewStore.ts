@@ -64,9 +64,9 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
   loading: false,
   error: null,
   maxIssues: loadStorage('specmap-cr-max-issues', 20),
-  timeout: loadStorage('specmap-cr-timeout', 300),
+  timeout: loadStorage('specmap-cr-timeout', 600),
   customPrompt: '',
-  contextLines: loadStorage('specmap-cr-context-lines', 10),
+  contextLines: loadStorage('specmap-cr-context-lines', 5),
   chunkThreshold: loadStorage('specmap-cr-chunk-threshold', 500),
   available: false,
 

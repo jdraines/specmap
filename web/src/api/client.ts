@@ -54,7 +54,7 @@ export async function apiFetchSSE(
   path: string,
   body: unknown,
   onProgress: (data: GenerateProgress) => void,
-  timeout: number = 180_000,
+  timeout: number = 660_000,
 ): Promise<SpecmapFile> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -145,7 +145,7 @@ export async function apiFetchChatSSE(
   path: string,
   body: unknown,
   callbacks: ChatSSECallbacks,
-  timeout: number = 300_000,
+  timeout: number = 660_000,
 ): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);

@@ -11,6 +11,7 @@ import litellm
 from pydantic import BaseModel
 
 from specmap.config import CoreConfig
+from specmap.llm.retry import is_rate_limit_error, extract_wait_seconds
 
 
 class LLMClient:
@@ -77,7 +78,10 @@ class LLMClient:
 
             except (litellm.exceptions.RateLimitError, litellm.exceptions.ServiceUnavailableError) as e:
                 last_error = e
-                wait = 2**attempt
+                if is_rate_limit_error(e):
+                    wait = extract_wait_seconds(e) or 30 * (attempt + 1)
+                else:
+                    wait = 2**attempt
                 print(
                     f"[specmap] LLM call failed (attempt {attempt + 1}/3), "
                     f"retrying in {wait}s: {e}",

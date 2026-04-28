@@ -65,7 +65,7 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   error: null,
   familiarity: loadStorage('specmap-wt-familiarity', 2),
   depth: loadStorage('specmap-wt-depth', 'quick'),
-  timeout: loadStorage('specmap-wt-timeout', 300),
+  timeout: loadStorage('specmap-wt-timeout', 600),
   available: false,
 
   // Chat state

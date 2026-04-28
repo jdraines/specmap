@@ -1,6 +1,6 @@
 import { apiFetch, apiFetchSSE, apiFetchChatSSE, apiFetchCodeReviewSSE } from './client';
 import type { ChatSSECallbacks } from './client';
-import type { CodeReview, CodeReviewProgress } from './types';
+import type { CodeReview, CodeReviewProgress, Settings } from './types';
 import type {
   User,
   Repository,
@@ -165,4 +165,13 @@ export const codeReview = {
         body: JSON.stringify({ issue_number: issueNumber }),
       },
     ),
+};
+
+export const settings = {
+  get: () => apiFetch<Settings>('/api/v1/settings'),
+  update: (data: Partial<Settings>) =>
+    apiFetch<Settings>('/api/v1/settings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
