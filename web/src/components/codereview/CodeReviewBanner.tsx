@@ -58,12 +58,43 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
             className="w-full text-xs px-3 py-2 mb-3 border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:ring-1 focus:ring-[var(--focus-ring)]"
           />
           <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={start}
-              className="px-3 py-1.5 text-xs font-semibold bg-[var(--cr-border)] text-white border-0 cursor-pointer hover:opacity-90"
-            >
-              Start Review
-            </button>
+            {review.issues.length > 0 && (
+              <button
+                onClick={start}
+                className="px-3 py-1.5 text-xs font-semibold bg-[var(--cr-border)] text-white border-0 cursor-pointer hover:opacity-90"
+              >
+                Start Review
+              </button>
+            )}
+            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+              Max issues:
+              <input
+                type="number" min="1" max="50" value={maxInput}
+                onChange={(e) => setMaxInput(e.target.value)}
+                onBlur={() => { const n = Math.max(1, Math.min(50, parseInt(maxInput) || 20)); setMaxInput(String(n)); setMaxIssues(n); }}
+                className="w-14 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
+              />
+            </label>
+            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+              Timeout:
+              <input
+                type="number" min="30" max="1800" value={timeoutInput}
+                onChange={(e) => setTimeoutInput(e.target.value)}
+                onBlur={() => { const t = Math.max(30, Math.min(1800, parseInt(timeoutInput) || 600)); setTimeoutInput(String(t)); setStoreTimeout(t); }}
+                className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
+              />
+              <span className="text-[var(--text-secondary)]">s</span>
+            </label>
+            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+              Chunk at:
+              <input
+                type="number" min="100" max="5000" value={chunkInput}
+                onChange={(e) => setChunkInput(e.target.value)}
+                onBlur={() => { const n = Math.max(100, Math.min(5000, parseInt(chunkInput) || 500)); setChunkInput(String(n)); setChunkThreshold(n); }}
+                className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
+              />
+              <span className="text-[var(--text-secondary)]">lines</span>
+            </label>
             <button
               onClick={() => generate(fullName, prNumber, true)}
               disabled={loading}
