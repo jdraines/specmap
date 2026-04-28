@@ -60,3 +60,42 @@ async def with_rate_limit_retry(
                 attempt + 1, max_retries, wait, e,
             )
             await asyncio.sleep(wait)
+
+
+async def resilient_agent_call(agent, prompt, model, rescue_agent, deps=None, usage_limits=None):
+    """Run an agent call with rate-limit retry and a rescue fallback on any failure.
+
+    If the primary agent fails (budget exceeded, validation error, etc.),
+    the rescue_agent makes a single toolless attempt with the same prompt.
+    If that also fails, the original error is re-raised.
+
+    Args:
+        agent: The primary pydantic-ai Agent to run.
+        prompt: User prompt string.
+        model: Model to use.
+        rescue_agent: Toolless agent with the same output_type, used as fallback.
+        deps: Dependencies for the primary agent (ignored for rescue).
+        usage_limits: UsageLimits for the primary agent.
+    """
+    from pydantic_ai.usage import UsageLimits
+
+    try:
+        result = await with_rate_limit_retry(lambda: agent.run(
+            user_prompt=prompt,
+            model=model,
+            deps=deps,
+            usage_limits=usage_limits,
+        ))
+        return result.output
+    except Exception as e:
+        logger.warning("Agent failed (%s), attempting rescue call", e)
+        try:
+            rescue = await rescue_agent.run(
+                user_prompt=prompt[:50000],
+                model=model,
+                usage_limits=UsageLimits(request_limit=1),
+            )
+            return rescue.output
+        except Exception as e2:
+            logger.error("Rescue call also failed: %s", e2)
+            raise e

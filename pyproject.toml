@@ -1,6 +1,6 @@
 [project]
 name = "specmap"
-version = "0.3.13"
+version = "0.3.14"
 description = "Spec-to-code mapping: core library, MCP server, and CLI"
 readme = "README.md"
 license = "MIT"

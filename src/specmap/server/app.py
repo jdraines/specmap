@@ -30,7 +30,7 @@ from pydantic_ai.messages import (
 )
 
 from specmap.llm.chat_agent import ChatDeps, chat_agent
-from specmap.llm.retry import with_rate_limit_retry
+from specmap.llm.retry import resilient_agent_call
 from specmap.llm.code_review_agent import CodeReviewDeps, review_agent, cross_boundary_agent, consolidation_agent
 from specmap.llm.code_review_prompts import build_code_review_prompt, build_chunk_review_prompt, build_consolidation_prompt, build_cross_boundary_prompt
 from specmap.llm.chat_prompts import build_chat_messages
@@ -1669,15 +1669,15 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             """Two-phase review: toolless analysis + targeted cross-boundary check."""
             from pydantic_ai.usage import UsageLimits
 
-            # Phase 1: Toolless review (single LLM call)
+            # Phase 1: Toolless review (single LLM call, rescue on failure)
             logger.info("Phase 1: toolless review (~%d estimated tokens)", len(prompt) // 4)
-            p1_result = await with_rate_limit_retry(lambda: review_agent.run(
-                user_prompt=prompt,
-                model=model,
-                usage_limits=UsageLimits(request_limit=2),
-            ))
+            p1_output = await resilient_agent_call(
+                review_agent, prompt, model,
+                rescue_agent=review_agent,  # rescue with same toolless agent
+                usage_limits=UsageLimits(request_limit=3),
+            )
             p1_issues = []
-            for iss in p1_result.output.issues:
+            for iss in p1_output.issues:
                 p1_issues.append({
                     "issue_number": iss.issue_number,
                     "severity": iss.severity,
@@ -1700,13 +1700,13 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             )
             logger.info("Phase 2: cross-boundary check (~%d estimated tokens)", len(cb_prompt) // 4)
             try:
-                p2_result = await with_rate_limit_retry(lambda: cross_boundary_agent.run(
-                    user_prompt=cb_prompt,
-                    model=model,
+                p2_output = await resilient_agent_call(
+                    cross_boundary_agent, cb_prompt, model,
+                    rescue_agent=review_agent,  # toolless rescue
                     deps=deps,
                     usage_limits=UsageLimits(request_limit=10),
-                ))
-                for iss in p2_result.output.issues:
+                )
+                for iss in p2_output.issues:
                     p1_issues.append({
                         "issue_number": len(p1_issues) + 1,
                         "severity": iss.severity,
@@ -1719,11 +1719,11 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         "category": iss.category,
                         "reasoning": iss.reasoning,
                     })
-                logger.info("Phase 2 found %d additional issues", len(p2_result.output.issues))
+                logger.info("Phase 2 found %d additional issues", len(p2_output.issues))
             except Exception as e:
                 logger.warning("Phase 2 cross-boundary check failed: %s", e)
 
-            return p1_result.output.summary, p1_issues
+            return p1_output.summary, p1_issues
 
         async def _stream_review():
             try:
@@ -1907,12 +1907,11 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     consolidation_prompt = build_consolidation_prompt(deduped, chunk_summaries)
                     logger.info("Consolidation prompt: ~%d estimated tokens (%d issues)", _estimate_tokens(consolidation_prompt), len(deduped))
                     from pydantic_ai.usage import UsageLimits as _UL
-                    cons_result = await with_rate_limit_retry(lambda: consolidation_agent.run(
-                        user_prompt=consolidation_prompt,
-                        model=chat_model,
-                        usage_limits=_UL(request_limit=2),
-                    ))
-                    review_data = cons_result.output
+                    review_data = await resilient_agent_call(
+                        consolidation_agent, consolidation_prompt, chat_model,
+                        rescue_agent=consolidation_agent,
+                        usage_limits=_UL(request_limit=3),
+                    )
 
                 # Build changed lines set for filtering
                 import re as _re
