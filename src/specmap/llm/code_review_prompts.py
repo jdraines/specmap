@@ -7,20 +7,8 @@ _CODE_REVIEW_SYSTEM = """\
 You are an expert code reviewer analyzing a pull request. Your goal is to find real, \
 actionable issues — not stylistic nits unless they impact readability significantly.
 
-You have tools to search the codebase, read files, and search annotations. Use them to \
-verify your assumptions before flagging an issue.
-
-## Tool Economy
-
-You have a limited tool call budget. Be strategic:
-- The full content of all files in your review is included in the prompt. Do NOT use \
-read_file for those files — their content is already above.
-- The repository file tree is included in the prompt. Do NOT use list_files.
-- When you need to read multiple files outside the prompt, pass them ALL in a single \
-read_file call using the `paths` parameter.
-- Reserve tool calls for verifying cross-boundary issues: checking callers in unchanged \
-files, confirming imports, verifying function signatures in other modules.
-- Weigh the value of each tool call. If you can answer from the prompt context, do so.
+The full content of all files under review, their diffs, the repository file tree, and \
+any annotations are included in the prompt. Analyze them thoroughly to find issues.
 
 ## Severity Ratings
 
@@ -314,6 +302,72 @@ Do not downgrade — if it's not a real bug, it's not any severity level.
 
 Be skeptical. You are seeing these issues cold — you didn't generate them. False positives \
 damage reviewer trust far more than missing a low-severity nit. When in doubt, drop."""
+
+
+_CROSS_BOUNDARY_SYSTEM = """\
+You are a cross-boundary verification agent for a code review. Your ONLY job is to find \
+wiring issues between the reviewed code and the rest of the codebase.
+
+You receive a diff showing what changed, plus issues found by an initial reviewer. \
+Scan the diff for:
+- Changed function/method signatures (new params, renamed, return type changes)
+- Renamed or deleted exports/imports
+- Changed type definitions or interfaces
+- New required arguments on existing functions
+
+For each change you identify, use grep_codebase to find callers/consumers OUTSIDE the \
+reviewed files. If any caller was not updated to match the change, flag it as an issue.
+
+You have a strict budget of tool calls. Plan efficiently:
+- Batch file reads using the `paths` parameter
+- Use targeted grep patterns (function names, class names) not broad searches
+- If you find no cross-boundary issues, return an empty issues list with a brief summary
+
+Do NOT re-review the code for correctness, style, or design — that was already done. \
+Focus exclusively on broken wiring between changed code and its consumers."""
+
+
+def build_cross_boundary_prompt(
+    chunk_patches: list[dict],
+    phase1_issues: list[dict],
+    all_changed_files: list[str],
+) -> str:
+    """Build prompt for the cross-boundary verification agent."""
+    parts: list[str] = []
+
+    parts.append("# Cross-Boundary Verification\n")
+    parts.append(
+        f"The initial review found {len(phase1_issues)} issue(s). "
+        f"Your job is to check for wiring issues between the changed code "
+        f"and the rest of the codebase.\n"
+    )
+
+    parts.append("## Changed Files in This Chunk\n")
+    for fp in chunk_patches:
+        patch = fp.get("patch", "")
+        if patch:
+            parts.append(f"### {fp['filename']}\n```diff\n{patch}\n```\n")
+
+    if phase1_issues:
+        parts.append("## Issues Found by Initial Reviewer\n")
+        for iss in phase1_issues:
+            parts.append(
+                f"- **{iss.get('severity', '?')}: {iss.get('title', '')}** "
+                f"[{iss.get('file', '')}:{iss.get('start_line', '?')}]\n"
+            )
+
+    other_files = [f for f in all_changed_files if f not in {fp["filename"] for fp in chunk_patches}]
+    if other_files:
+        parts.append("## Other Files Changed in This PR (outside this chunk)\n")
+        parts.append("\n".join(f"- {f}" for f in other_files[:50]) + "\n")
+
+    parts.append(
+        "Identify changed signatures/exports/types from the diff above. "
+        "Use grep_codebase to find callers outside these files. "
+        "Flag any that weren't updated. Return a CodeReviewResponse."
+    )
+
+    return "\n".join(parts)
 
 
 def build_consolidation_prompt(

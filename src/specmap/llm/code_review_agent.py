@@ -1,4 +1,10 @@
-"""Pydantic AI agent for code review generation."""
+"""Pydantic AI agents for code review generation.
+
+Three agents form the review pipeline:
+- review_agent: Toolless, single-call review (Phase 1)
+- cross_boundary_agent: Targeted tool use for wiring issues (Phase 2)
+- consolidation_agent: Toolless dedup/validation (Phase 3)
+"""
 
 from __future__ import annotations
 
@@ -8,21 +14,33 @@ import re
 from pydantic_ai import Agent, RunContext
 
 from specmap.llm.chat_agent import ChatDeps, _read_single_file
-from specmap.llm.code_review_prompts import _CODE_REVIEW_SYSTEM, _CONSOLIDATION_SYSTEM
+from specmap.llm.code_review_prompts import (
+    _CODE_REVIEW_SYSTEM,
+    _CONSOLIDATION_SYSTEM,
+    _CROSS_BOUNDARY_SYSTEM,
+)
 from specmap.llm.code_review_schemas import CodeReviewResponse
 from specmap.server.forge import ForgeNotFound
 
-# Reuse ChatDeps — the review agent needs the same tools and context
+# Reuse ChatDeps for agents that need tools
 CodeReviewDeps = ChatDeps
 
-code_review_agent = Agent(
-    deps_type=CodeReviewDeps,
+# Phase 1: Toolless review — single LLM call, no agentic loop
+review_agent = Agent(
     system_prompt=_CODE_REVIEW_SYSTEM,
     output_type=CodeReviewResponse,
     retries=2,
 )
 
-# Consolidation agent — no tools, no deps. Works from issue descriptions only.
+# Phase 2: Cross-boundary verification — targeted tool use with strict budget
+cross_boundary_agent = Agent(
+    deps_type=CodeReviewDeps,
+    system_prompt=_CROSS_BOUNDARY_SYSTEM,
+    output_type=CodeReviewResponse,
+    retries=2,
+)
+
+# Phase 3: Consolidation — toolless dedup/validation
 consolidation_agent = Agent(
     system_prompt=_CONSOLIDATION_SYSTEM,
     output_type=CodeReviewResponse,
@@ -30,7 +48,10 @@ consolidation_agent = Agent(
 )
 
 
-@code_review_agent.tool
+# --- Tools for cross_boundary_agent only ---
+
+
+@cross_boundary_agent.tool
 async def search_annotations(
     ctx: RunContext[CodeReviewDeps],
     query: str,
@@ -69,7 +90,7 @@ async def search_annotations(
     return f"Found {len(results)} annotation(s):\n" + "\n".join(results[:20])
 
 
-@code_review_agent.tool
+@cross_boundary_agent.tool
 async def grep_codebase(
     ctx: RunContext[CodeReviewDeps],
     pattern: str,
@@ -86,6 +107,7 @@ async def grep_codebase(
     cache_key = f"grep:{pattern}:{file_glob}:{max_results}"
     if cache_key in ctx.deps._tool_cache:
         return ctx.deps._tool_cache[cache_key]
+
     try:
         compiled = re.compile(pattern, re.IGNORECASE)
     except re.error as e:
@@ -137,7 +159,7 @@ async def grep_codebase(
     return result
 
 
-@code_review_agent.tool
+@cross_boundary_agent.tool
 async def list_files(
     ctx: RunContext[CodeReviewDeps],
     path_prefix: str | None = None,
@@ -150,7 +172,7 @@ async def list_files(
     Args:
         path_prefix: Filter to files under this directory prefix.
         glob: Filter by glob pattern.
-        offset: Skip this many results (for pagination if repo has many files).
+        offset: Skip this many results (for pagination).
         limit: Maximum number of paths to return (default 200).
     """
     tree = await ctx.deps.get_file_tree()
@@ -181,7 +203,7 @@ async def list_files(
     return f"{len(paths)} file(s) (of {total} total):\n" + "\n".join(paths) + truncated
 
 
-@code_review_agent.tool
+@cross_boundary_agent.tool
 async def read_file(
     ctx: RunContext[CodeReviewDeps],
     path: str,
@@ -191,8 +213,7 @@ async def read_file(
 ) -> str:
     """Read file content from the repository at PR HEAD.
 
-    Can read a single file or multiple files in one call. When you need to
-    check several files, pass them all at once via the paths parameter.
+    Can read multiple files in one call via the paths parameter.
 
     Args:
         path: File path relative to repo root (for single file).

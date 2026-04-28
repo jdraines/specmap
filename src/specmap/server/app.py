@@ -31,8 +31,8 @@ from pydantic_ai.messages import (
 
 from specmap.llm.chat_agent import ChatDeps, chat_agent
 from specmap.llm.retry import with_rate_limit_retry
-from specmap.llm.code_review_agent import CodeReviewDeps, code_review_agent, consolidation_agent
-from specmap.llm.code_review_prompts import build_code_review_prompt, build_chunk_review_prompt, build_consolidation_prompt
+from specmap.llm.code_review_agent import CodeReviewDeps, review_agent, cross_boundary_agent, consolidation_agent
+from specmap.llm.code_review_prompts import build_code_review_prompt, build_chunk_review_prompt, build_consolidation_prompt, build_cross_boundary_prompt
 from specmap.llm.chat_prompts import build_chat_messages
 from specmap.llm.client import LLMClient
 from specmap.llm.walkthrough_prompts import build_walkthrough_prompt
@@ -1422,6 +1422,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         chat_model = _build_chat_model(cfg.core)
 
         async def stream_chat():
+            from pydantic_ai.usage import UsageLimits as _ChatLimits
             full_content = ""
             try:
                 async for event in chat_agent.run_stream_events(
@@ -1429,6 +1430,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     message_history=messages,
                     model=chat_model,
                     deps=deps,
+                    usage_limits=_ChatLimits(request_limit=20),
                 ):
                     if isinstance(event, PartStartEvent):
                         if isinstance(event.part, TextPart) and event.part.content:
@@ -1663,62 +1665,65 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             if existing_cr and existing_cr.get("head_sha") == head_sha:
                 return existing_cr
 
-        async def _run_review_with_wrapup(agent, prompt, model, deps, request_limit=50, wrapup_buffer=5):
-            """Run a review agent, breaking out for a separate wrap-up call before hitting the limit."""
+        async def _run_two_phase_review(prompt, chunk_patches, model, deps, all_changed_files):
+            """Two-phase review: toolless analysis + targeted cross-boundary check."""
             from pydantic_ai.usage import UsageLimits
-            from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-            wrapup_threshold = request_limit - wrapup_buffer
-            limits = UsageLimits(request_limit=request_limit)
-            messages = None
-
-            async with agent.iter(
+            # Phase 1: Toolless review (single LLM call)
+            logger.info("Phase 1: toolless review (~%d estimated tokens)", len(prompt) // 4)
+            p1_result = await with_rate_limit_retry(lambda: review_agent.run(
                 user_prompt=prompt,
                 model=model,
-                deps=deps,
-                usage_limits=limits,
-            ) as agent_run:
-                async for _node in agent_run:
-                    usage = agent_run.usage()
-                    if usage.requests >= wrapup_threshold:
-                        logger.info(
-                            "Code review at %d/%d requests — breaking for wrap-up",
-                            usage.requests, request_limit,
-                        )
-                        messages = list(agent_run.all_messages())
-                        break
+                usage_limits=UsageLimits(request_limit=2),
+            ))
+            p1_issues = []
+            for iss in p1_result.output.issues:
+                p1_issues.append({
+                    "issue_number": iss.issue_number,
+                    "severity": iss.severity,
+                    "title": iss.title,
+                    "description": iss.description,
+                    "file": iss.file,
+                    "start_line": iss.start_line or 0,
+                    "end_line": iss.end_line or iss.start_line or 0,
+                    "suggested_fix": iss.suggested_fix,
+                    "category": iss.category,
+                    "reasoning": iss.reasoning,
+                })
+            logger.info("Phase 1 found %d issues", len(p1_issues))
 
-            # If the agent finished normally (under threshold), return its result
-            if agent_run.result is not None:
-                return agent_run.result.output
-
-            # Strip unprocessed tool calls from the end of message history
-            # to avoid "unprocessed tool calls" error in the wrap-up call
-            if messages:
-                while messages and isinstance(messages[-1], ModelResponse):
-                    last = messages[-1]
-                    # Remove tool call parts, keep text parts
-                    cleaned_parts = [p for p in last.parts if not isinstance(p, ToolCallPart)]
-                    if cleaned_parts:
-                        messages[-1] = ModelResponse(parts=cleaned_parts)
-                        break
-                    else:
-                        messages.pop()
-
-            # Wrap-up: separate call with the conversation so far, no tools
-            logger.info("Running wrap-up call with %d messages from interrupted run", len(messages or []))
-            wrapup = await agent.run(
-                user_prompt=(
-                    "You have used most of your allowed tool calls. "
-                    "Based on everything you have analyzed so far, produce your final "
-                    "CodeReviewResponse now. Do not call any more tools — just output "
-                    "your structured review with whatever issues you have found."
-                ),
-                message_history=messages,
-                model=model,
-                usage_limits=UsageLimits(request_limit=wrapup_buffer),
+            # Phase 2: Cross-boundary verification (targeted tool use)
+            cb_prompt = build_cross_boundary_prompt(
+                chunk_patches=chunk_patches,
+                phase1_issues=p1_issues,
+                all_changed_files=all_changed_files,
             )
-            return wrapup.output
+            logger.info("Phase 2: cross-boundary check (~%d estimated tokens)", len(cb_prompt) // 4)
+            try:
+                p2_result = await with_rate_limit_retry(lambda: cross_boundary_agent.run(
+                    user_prompt=cb_prompt,
+                    model=model,
+                    deps=deps,
+                    usage_limits=UsageLimits(request_limit=10),
+                ))
+                for iss in p2_result.output.issues:
+                    p1_issues.append({
+                        "issue_number": len(p1_issues) + 1,
+                        "severity": iss.severity,
+                        "title": iss.title,
+                        "description": iss.description,
+                        "file": iss.file,
+                        "start_line": iss.start_line or 0,
+                        "end_line": iss.end_line or iss.start_line or 0,
+                        "suggested_fix": iss.suggested_fix,
+                        "category": iss.category,
+                        "reasoning": iss.reasoning,
+                    })
+                logger.info("Phase 2 found %d additional issues", len(p2_result.output.issues))
+            except Exception as e:
+                logger.warning("Phase 2 cross-boundary check failed: %s", e)
+
+            return p1_result.output.summary, p1_issues
 
         async def _stream_review():
             try:
@@ -1834,10 +1839,16 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         file_tree=repo_file_tree,
                     )
                     logger.info("Code review prompt: ~%d estimated tokens", _estimate_tokens(user_prompt))
-                    review_data = await _run_review_with_wrapup(
-                        code_review_agent, user_prompt, chat_model,
-                        _make_deps(changed_files),
+                    summary, all_issues = await _run_two_phase_review(
+                        user_prompt, file_patches, chat_model,
+                        _make_deps(changed_files), changed_files,
                     )
+                    # Wrap in a simple namespace for the rest of the pipeline
+                    class _ReviewResult:
+                        pass
+                    review_data = _ReviewResult()
+                    review_data.summary = summary
+                    review_data.issues = all_issues
                 else:
                     n = len(chunks)
                     yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks (max 4 concurrent)...", "chunk": 0, "total_chunks": n})
@@ -1848,7 +1859,6 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         async with _chunk_sem:
                             rich = await _enrich_patches(chunk_patches)
                             chunk_files_inner = [fp["filename"] for fp in chunk_patches]
-                            # Filter specs to only those referenced by this chunk's annotations
                             chunk_ann = [a for a in annotations_list if a.get("file") in chunk_files_inner]
                             chunk_spec_files: set[str] = set()
                             for ann in chunk_ann:
@@ -1857,7 +1867,6 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                     if sf:
                                         chunk_spec_files.add(sf)
                             chunk_specs = {k: v for k, v in spec_contents.items() if k in chunk_spec_files}
-                            # Filter file contents to this chunk
                             chunk_contents = {k: v for k, v in file_contents.items() if k in chunk_files_inner}
                             prompt = build_chunk_review_prompt(
                                 pr_title=p.get("title", ""),
@@ -1875,10 +1884,12 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                 file_tree=repo_file_tree,
                             )
                             logger.info("Chunk %d/%d prompt: ~%d estimated tokens", chunk_idx + 1, n, _estimate_tokens(prompt))
-                            return await _run_review_with_wrapup(
-                                code_review_agent, prompt, chat_model,
+                            summary, issues = await _run_two_phase_review(
+                                prompt, chunk_patches, chat_model,
                                 _make_deps(chunk_files_inner, prompt_file_set=set(chunk_contents.keys())),
+                                changed_files,
                             )
+                            return summary, issues
 
                     chunk_results = await asyncio.gather(
                         *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)]
@@ -1886,30 +1897,20 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
                     all_issues: list[dict] = []
                     chunk_summaries: list[str] = []
-                    for cr in chunk_results:
-                        chunk_summaries.append(cr.summary)
-                        for issue in cr.issues:
-                            all_issues.append({
-                                "issue_number": issue.issue_number,
-                                "severity": issue.severity,
-                                "title": issue.title,
-                                "description": issue.description,
-                                "file": issue.file,
-                                "start_line": issue.start_line or 0,
-                                "end_line": issue.end_line or issue.start_line or 0,
-                                "suggested_fix": issue.suggested_fix,
-                                "category": issue.category,
-                                "reasoning": issue.reasoning,
-                            })
+                    for summary, issues in chunk_results:
+                        chunk_summaries.append(summary)
+                        all_issues.extend(issues)
 
                     deduped = _programmatic_dedup(all_issues)
 
                     yield _sse("progress", {"phase": "consolidating", "detail": "Validating and consolidating issues..."})
                     consolidation_prompt = build_consolidation_prompt(deduped, chunk_summaries)
                     logger.info("Consolidation prompt: ~%d estimated tokens (%d issues)", _estimate_tokens(consolidation_prompt), len(deduped))
+                    from pydantic_ai.usage import UsageLimits as _UL
                     cons_result = await with_rate_limit_retry(lambda: consolidation_agent.run(
                         user_prompt=consolidation_prompt,
                         model=chat_model,
+                        usage_limits=_UL(request_limit=2),
                     ))
                     review_data = cons_result.output
 
@@ -2202,6 +2203,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         chat_model = _build_chat_model(cfg.core)
 
         async def stream_chat():
+            from pydantic_ai.usage import UsageLimits as _ChatLimits
             full_content = ""
             try:
                 async for event in chat_agent.run_stream_events(
@@ -2209,6 +2211,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     message_history=messages,
                     model=chat_model,
                     deps=deps,
+                    usage_limits=_ChatLimits(request_limit=20),
                 ):
                     if isinstance(event, PartStartEvent):
                         if isinstance(event.part, TextPart) and event.part.content:
