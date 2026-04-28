@@ -8,8 +8,19 @@ You are an expert code reviewer analyzing a pull request. Your goal is to find r
 actionable issues — not stylistic nits unless they impact readability significantly.
 
 You have tools to search the codebase, read files, and search annotations. Use them to \
-verify your assumptions before flagging an issue. For example, if you suspect a function \
-is called incorrectly, grep for its usage. If you think an import is missing, read the file.
+verify your assumptions before flagging an issue.
+
+## Tool Economy
+
+You have a limited tool call budget. Be strategic:
+- The full content of all files in your review is included in the prompt. Do NOT use \
+read_file for those files — their content is already above.
+- The repository file tree is included in the prompt. Do NOT use list_files.
+- When you need to read multiple files outside the prompt, pass them ALL in a single \
+read_file call using the `paths` parameter.
+- Reserve tool calls for verifying cross-boundary issues: checking callers in unchanged \
+files, confirming imports, verifying function signatures in other modules.
+- Weigh the value of each tool call. If you can answer from the prompt context, do so.
 
 ## Severity Ratings
 
@@ -92,6 +103,7 @@ def build_code_review_prompt(
     max_issues: int = 20,
     custom_prompt: str = "",
     file_contents: dict[str, str] | None = None,
+    file_tree: list[str] | None = None,
 ) -> str:
     """Build the user prompt for code review generation.
 
@@ -159,6 +171,11 @@ def build_code_review_prompt(
         + "\n"
     )
 
+    if file_tree:
+        tree_text = "\n".join(file_tree[:500])
+        truncated = f"\n... and {len(file_tree) - 500} more" if len(file_tree) > 500 else ""
+        parts.append(f"# Repository File Tree\n\n```\n{tree_text}{truncated}\n```\n")
+
     if custom_prompt:
         parts.append(
             "# Reviewer Instructions\n\n"
@@ -189,6 +206,7 @@ def build_chunk_review_prompt(
     max_issues: int = 20,
     custom_prompt: str = "",
     file_contents: dict[str, str] | None = None,
+    file_tree: list[str] | None = None,
 ) -> str:
     """Build prompt for reviewing a single chunk of a large PR.
 
@@ -254,6 +272,11 @@ def build_chunk_review_prompt(
         parts.append("# Spec Documents\n")
         for spec_file, content in spec_contents.items():
             parts.append(f"## {spec_file}\n{content}\n")
+
+    if file_tree:
+        tree_text = "\n".join(file_tree[:500])
+        truncated = f"\n... and {len(file_tree) - 500} more" if len(file_tree) > 500 else ""
+        parts.append(f"# Repository File Tree\n\n```\n{tree_text}{truncated}\n```\n")
 
     if custom_prompt:
         parts.append(

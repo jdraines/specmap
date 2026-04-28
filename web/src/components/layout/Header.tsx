@@ -11,9 +11,15 @@ export function Header() {
   const [model, setModel] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [version, setVersion] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const themeLabel = theme === 'light' ? 'light' : theme === 'dark' ? 'dark' : 'sys';
+
+  // Fetch version once on mount
+  useEffect(() => {
+    fetch('/healthz').then(r => r.json()).then(d => setVersion(d.version || '')).catch(() => {});
+  }, []);
 
   // Load settings when dropdown opens
   useEffect(() => {
@@ -54,6 +60,7 @@ export function Header() {
       <div className="px-4 h-12 flex items-center justify-between">
         <Link to="/" className="text-sm font-semibold text-[var(--text-primary)] no-underline tracking-tight">
           <span className="text-[var(--text-secondary)]">&gt;</span> specmap<span className="text-[var(--accent)]">_</span>
+          {version && <span className="text-[10px] font-mono text-[var(--wt-border)] ml-1">{version}</span>}
         </Link>
         <div className="flex items-center gap-3">
           <button

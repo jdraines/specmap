@@ -26,7 +26,9 @@ class ChatDeps:
     annotations: list[dict]
     changed_files: list[str] = field(default_factory=list)
     file_patches: dict[str, str] = field(default_factory=dict)  # filename → patch
+    prompt_files: set[str] = field(default_factory=set)  # files whose content is in the prompt
     _file_tree: list[dict] | None = None
+    _tool_cache: dict[str, str] = field(default_factory=dict)
 
     async def get_file_tree(self) -> list[dict]:
         """Lazily fetch and cache the full repo file tree."""
@@ -107,7 +109,7 @@ async def grep_codebase(
     ctx: RunContext[ChatDeps],
     pattern: str,
     file_glob: str | None = None,
-    max_results: int = 20,
+    max_results: int = 50,
 ) -> str:
     """Grep-like regex search across repo files at PR HEAD.
 
@@ -116,8 +118,11 @@ async def grep_codebase(
     Args:
         pattern: Regex pattern to search for.
         file_glob: Optional glob to filter files (e.g. "*.py", "src/**/*.ts").
-        max_results: Maximum number of matching lines to return (default 20).
+        max_results: Maximum number of matching lines to return (default 50).
     """
+    cache_key = f"grep:{pattern}:{file_glob}:{max_results}"
+    if cache_key in ctx.deps._tool_cache:
+        return ctx.deps._tool_cache[cache_key]
     try:
         compiled = re.compile(pattern, re.IGNORECASE)
     except re.error as e:
@@ -136,8 +141,6 @@ async def grep_codebase(
         tree = await ctx.deps.get_file_tree()
         paths = [e["path"] for e in tree if e["type"] == "blob"]
 
-    # Cap files to search
-    paths = paths[:50]
     changed_set = set(ctx.deps.changed_files)
 
     matches: list[str] = []
@@ -161,13 +164,16 @@ async def grep_codebase(
                     break
 
     if not matches:
-        return f"No matches for pattern '{pattern}'" + (
+        result = f"No matches for pattern '{pattern}'" + (
             f" in files matching '{file_glob}'" if file_glob else ""
         )
-    header = f"Found {len(matches)} match(es)"
-    if len(matches) >= max_results:
-        header += f" (capped at {max_results})"
-    return header + ":\n" + "\n".join(matches)
+    else:
+        header = f"Found {len(matches)} match(es)"
+        if len(matches) >= max_results:
+            header += f" (capped at {max_results})"
+        result = header + ":\n" + "\n".join(matches)
+    ctx.deps._tool_cache[cache_key] = result
+    return result
 
 
 @chat_agent.tool
@@ -175,6 +181,8 @@ async def list_files(
     ctx: RunContext[ChatDeps],
     path_prefix: str | None = None,
     glob: str | None = None,
+    offset: int = 0,
+    limit: int = 200,
 ) -> str:
     """List files in the repository tree.
 
@@ -183,6 +191,8 @@ async def list_files(
     Args:
         path_prefix: Filter to files under this directory prefix (e.g. "src/auth").
         glob: Filter by glob pattern (e.g. "*.py", "src/**/*.ts").
+        offset: Skip this many results (for pagination if repo has many files).
+        limit: Maximum number of paths to return (default 200).
     """
     tree = await ctx.deps.get_file_tree()
     changed_set = set(ctx.deps.changed_files)
@@ -198,35 +208,30 @@ async def list_files(
         marker = " [CHANGED]" if p in changed_set else ""
         paths.append(f"{p}{marker}")
 
+    total = len(paths)
     if not paths:
         return "No files found" + (
             f" under '{path_prefix}'" if path_prefix else ""
         ) + (f" matching '{glob}'" if glob else "")
 
+    paths = paths[offset:offset + limit]
     truncated = ""
-    if len(paths) > 100:
-        truncated = f"\n... and {len(paths) - 100} more files"
-        paths = paths[:100]
+    remaining = total - offset - len(paths)
+    if remaining > 0:
+        truncated = f"\n... and {remaining} more files (use offset={offset + limit} to see next page)"
     return f"{len(paths)} file(s):\n" + "\n".join(paths) + truncated
 
 
-@chat_agent.tool
-async def read_file(
-    ctx: RunContext[ChatDeps],
-    path: str,
-    start_line: int | None = None,
-    end_line: int | None = None,
-) -> str:
-    """Read a file's content from the repository at PR HEAD.
+async def _read_single_file(ctx: RunContext[ChatDeps], path: str, start_line: int | None = None, end_line: int | None = None) -> str:
+    """Read a single file, with caching, prompt-file short-circuit, and diff appending."""
+    # Short-circuit for files already in the prompt
+    if path in ctx.deps.prompt_files and not start_line and not end_line:
+        return f"{path}: This file's full content is already included in your prompt context above. Refer to it there."
 
-    If the file was changed in this PR, the diff is included alongside
-    the file content so you can see what was modified.
+    cache_key = f"read:{path}:{start_line}:{end_line}"
+    if cache_key in ctx.deps._tool_cache:
+        return ctx.deps._tool_cache[cache_key]
 
-    Args:
-        path: File path relative to repo root.
-        start_line: Optional 1-indexed start line.
-        end_line: Optional 1-indexed end line (inclusive).
-    """
     try:
         raw = await ctx.deps.provider.get_file_content(
             ctx.deps.http_client, ctx.deps.token,
@@ -251,9 +256,39 @@ async def read_file(
         numbered = [f"{i}: {line}" for i, line in enumerate(lines, 1)]
         result = f"{path} ({len(lines)} lines):\n" + "\n".join(numbered)
 
-    # Append diff if this file was changed in the PR
     patch = ctx.deps.file_patches.get(path)
     if patch:
         result += f"\n\n--- PR diff for {path} ---\n```diff\n{patch}\n```"
 
+    ctx.deps._tool_cache[cache_key] = result
     return result
+
+
+@chat_agent.tool
+async def read_file(
+    ctx: RunContext[ChatDeps],
+    path: str,
+    paths: list[str] | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> str:
+    """Read file content from the repository at PR HEAD.
+
+    Can read a single file or multiple files in one call. When you need to
+    check several files, pass them all at once via the paths parameter to
+    save tool calls.
+
+    Args:
+        path: File path relative to repo root (for single file).
+        paths: List of file paths to read in one call (for multiple files).
+        start_line: Optional 1-indexed start line (only for single file).
+        end_line: Optional 1-indexed end line inclusive (only for single file).
+    """
+    all_paths = paths or [path]
+    if len(all_paths) == 1:
+        return await _read_single_file(ctx, all_paths[0], start_line, end_line)
+
+    results = []
+    for p in all_paths:
+        results.append(await _read_single_file(ctx, p))
+    return "\n\n---\n\n".join(results)

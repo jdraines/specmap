@@ -1666,6 +1666,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         async def _run_review_with_wrapup(agent, prompt, model, deps, request_limit=50, wrapup_buffer=5):
             """Run a review agent, breaking out for a separate wrap-up call before hitting the limit."""
             from pydantic_ai.usage import UsageLimits
+            from pydantic_ai.messages import ModelResponse, ToolCallPart
 
             wrapup_threshold = request_limit - wrapup_buffer
             limits = UsageLimits(request_limit=request_limit)
@@ -1684,12 +1685,25 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                             "Code review at %d/%d requests — breaking for wrap-up",
                             usage.requests, request_limit,
                         )
-                        messages = agent_run.all_messages()
+                        messages = list(agent_run.all_messages())
                         break
 
             # If the agent finished normally (under threshold), return its result
             if agent_run.result is not None:
                 return agent_run.result.output
+
+            # Strip unprocessed tool calls from the end of message history
+            # to avoid "unprocessed tool calls" error in the wrap-up call
+            if messages:
+                while messages and isinstance(messages[-1], ModelResponse):
+                    last = messages[-1]
+                    # Remove tool call parts, keep text parts
+                    cleaned_parts = [p for p in last.parts if not isinstance(p, ToolCallPart)]
+                    if cleaned_parts:
+                        messages[-1] = ModelResponse(parts=cleaned_parts)
+                        break
+                    else:
+                        messages.pop()
 
             # Wrap-up: separate call with the conversation so far, no tools
             logger.info("Running wrap-up call with %d messages from interrupted run", len(messages or []))
@@ -1736,6 +1750,16 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     except ForgeNotFound:
                         pass
 
+                # Fetch repo file tree for the prompt
+                repo_file_tree: list[str] = []
+                try:
+                    tree = await provider.list_tree(
+                        _http(request), token, owner, repo, head_sha,
+                    )
+                    repo_file_tree = [e["path"] for e in tree if e["type"] == "blob"]
+                except Exception:
+                    pass
+
                 base_sha = p.get("base_sha", "")
                 changed_files = [fp["filename"] for fp in file_patches]
                 file_patches_map = {
@@ -1775,7 +1799,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         result.append(rich_fp)
                     return result
 
-                def _make_deps(chunk_files: list[str]) -> CodeReviewDeps:
+                def _make_deps(chunk_files: list[str], prompt_file_set: set[str] | None = None) -> CodeReviewDeps:
                     return CodeReviewDeps(
                         provider=provider,
                         http_client=_http(request),
@@ -1786,6 +1810,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         annotations=annotations_list,
                         changed_files=changed_files,
                         file_patches=file_patches_map,
+                        prompt_files=prompt_file_set or set(file_contents.keys()),
                     )
 
                 chunks = _chunk_file_patches(file_patches, chunk_threshold)
@@ -1806,6 +1831,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         max_issues=max_issues,
                         custom_prompt=custom_prompt,
                         file_contents=file_contents,
+                        file_tree=repo_file_tree,
                     )
                     logger.info("Code review prompt: ~%d estimated tokens", _estimate_tokens(user_prompt))
                     review_data = await _run_review_with_wrapup(
@@ -1846,11 +1872,12 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                 max_issues=max_issues,
                                 custom_prompt=custom_prompt,
                                 file_contents=chunk_contents,
+                                file_tree=repo_file_tree,
                             )
                             logger.info("Chunk %d/%d prompt: ~%d estimated tokens", chunk_idx + 1, n, _estimate_tokens(prompt))
                             return await _run_review_with_wrapup(
                                 code_review_agent, prompt, chat_model,
-                                _make_deps(chunk_files_inner),
+                                _make_deps(chunk_files_inner, prompt_file_set=set(chunk_contents.keys())),
                             )
 
                     chunk_results = await asyncio.gather(
