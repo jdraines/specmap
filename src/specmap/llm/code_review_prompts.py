@@ -91,6 +91,7 @@ def build_code_review_prompt(
     spec_contents: dict[str, str],
     max_issues: int = 20,
     custom_prompt: str = "",
+    file_contents: dict[str, str] | None = None,
 ) -> str:
     """Build the user prompt for code review generation.
 
@@ -121,17 +122,26 @@ def build_code_review_prompt(
                     )
             parts.append("")
 
-    # File patches
+    # File patches + full content
     if file_patches:
         parts.append("# Changed Files\n")
         for fp in file_patches:
             patch = fp.get("patch", "")
+            fname = fp["filename"]
             if patch:
-                parts.append(
-                    f"## {fp['filename']}\n```diff\n{patch}\n```\n"
-                )
+                parts.append(f"## {fname}\n### Diff\n```diff\n{patch}\n```\n")
             else:
-                parts.append(f"## {fp['filename']}\n(binary or empty diff)\n")
+                parts.append(f"## {fname}\n(binary or empty diff)\n")
+            # Include full file content so the agent doesn't need read_file for PR files
+            if file_contents and fname in file_contents:
+                content = file_contents[fname]
+                lines = content.splitlines()
+                if len(lines) > 500:
+                    numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines[:500], 1))
+                    parts.append(f"### Full content ({len(lines)} lines, first 500 shown)\n```\n{numbered}\n```\n")
+                else:
+                    numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
+                    parts.append(f"### Full content ({len(lines)} lines)\n```\n{numbered}\n```\n")
 
     # Spec documents
     if spec_contents:
@@ -178,6 +188,7 @@ def build_chunk_review_prompt(
     spec_contents: dict[str, str],
     max_issues: int = 20,
     custom_prompt: str = "",
+    file_contents: dict[str, str] | None = None,
 ) -> str:
     """Build prompt for reviewing a single chunk of a large PR.
 
@@ -223,10 +234,20 @@ def build_chunk_review_prompt(
     parts.append("# Changed Files in This Chunk\n")
     for fp in chunk_patches:
         patch = fp.get("patch", "")
+        fname = fp["filename"]
         if patch:
-            parts.append(f"## {fp['filename']}\n```diff\n{patch}\n```\n")
+            parts.append(f"## {fname}\n### Diff\n```diff\n{patch}\n```\n")
         else:
-            parts.append(f"## {fp['filename']}\n(binary or empty diff)\n")
+            parts.append(f"## {fname}\n(binary or empty diff)\n")
+        if file_contents and fname in file_contents:
+            content = file_contents[fname]
+            lines = content.splitlines()
+            if len(lines) > 500:
+                numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines[:500], 1))
+                parts.append(f"### Full content ({len(lines)} lines, first 500 shown)\n```\n{numbered}\n```\n")
+            else:
+                numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
+                parts.append(f"### Full content ({len(lines)} lines)\n```\n{numbered}\n```\n")
 
     # Spec documents
     if spec_contents:

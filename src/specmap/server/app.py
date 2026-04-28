@@ -1663,6 +1663,52 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             if existing_cr and existing_cr.get("head_sha") == head_sha:
                 return existing_cr
 
+        async def _run_review_with_wrapup(agent, prompt, model, deps, request_limit=50, wrapup_buffer=5):
+            """Run a review agent, injecting wrap-up instructions before hitting the limit."""
+            from pydantic_ai.usage import UsageLimits
+            from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+            limits = UsageLimits(request_limit=request_limit)
+            wrapup_injected = False
+            wrapup_threshold = request_limit - wrapup_buffer
+
+            async with agent.iter(
+                user_prompt=prompt,
+                model=model,
+                deps=deps,
+                usage_limits=limits,
+            ) as agent_run:
+                async for node in agent_run:
+                    usage = agent_run.usage()
+                    if not wrapup_injected and usage.requests >= wrapup_threshold:
+                        wrapup_injected = True
+                        logger.info(
+                            "Code review approaching limit (%d/%d requests), injecting wrap-up",
+                            usage.requests, request_limit,
+                        )
+                        # Inject a user message into the history telling the agent to finish
+                        agent_run.all_messages().append(
+                            ModelRequest(parts=[UserPromptPart(content=(
+                                "IMPORTANT: You are approaching the request limit. "
+                                "Stop making tool calls immediately. Produce your final "
+                                "CodeReviewResponse now with the issues you have found so far."
+                            ))])
+                        )
+
+            if agent_run.result is not None:
+                return agent_run.result.output
+
+            # Fallback: if iter ended without result (shouldn't happen), do a final call
+            logger.warning("Review iter ended without result, doing final wrapup call")
+            wrapup = await agent.run(
+                user_prompt=(
+                    "Produce your final CodeReviewResponse now based on what "
+                    "you have already analyzed. Do not call any more tools."
+                ),
+                model=model,
+            )
+            return wrapup.output
+
         async def _stream_review():
             try:
                 yield _sse("progress", {"phase": "preparing", "detail": "Loading annotations and file patches..."})
@@ -1702,6 +1748,20 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                 }
                 chat_model = _build_chat_model(cfg.core)
                 chunk_threshold = body.get("chunk_threshold", 500)
+
+                # Pre-load full file content for changed files (avoids read_file tool calls)
+                file_contents: dict[str, str] = {}
+                for fp in file_patches:
+                    fname = fp["filename"]
+                    if fp.get("status") == "removed":
+                        continue
+                    try:
+                        raw = await provider.get_file_content(
+                            _http(request), token, owner, repo, fname, head_sha,
+                        )
+                        file_contents[fname] = raw.decode("utf-8", errors="replace")
+                    except (ForgeNotFound, Exception):
+                        pass
 
                 async def _enrich_patches(patches: list[dict]) -> list[dict]:
                     if not base_sha:
@@ -1748,14 +1808,13 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         spec_contents=spec_contents,
                         max_issues=max_issues,
                         custom_prompt=custom_prompt,
+                        file_contents=file_contents,
                     )
                     logger.info("Code review prompt: ~%d estimated tokens", _estimate_tokens(user_prompt))
-                    result = await with_rate_limit_retry(lambda: code_review_agent.run(
-                        user_prompt=user_prompt,
-                        model=chat_model,
-                        deps=_make_deps(changed_files),
-                    ))
-                    review_data = result.output
+                    review_data = await _run_review_with_wrapup(
+                        code_review_agent, user_prompt, chat_model,
+                        _make_deps(changed_files),
+                    )
                 else:
                     n = len(chunks)
                     yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks (max 4 concurrent)...", "chunk": 0, "total_chunks": n})
@@ -1775,6 +1834,8 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                     if sf:
                                         chunk_spec_files.add(sf)
                             chunk_specs = {k: v for k, v in spec_contents.items() if k in chunk_spec_files}
+                            # Filter file contents to this chunk
+                            chunk_contents = {k: v for k, v in file_contents.items() if k in chunk_files_inner}
                             prompt = build_chunk_review_prompt(
                                 pr_title=p.get("title", ""),
                                 head_branch=p["head_branch"],
@@ -1787,14 +1848,13 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                 spec_contents=chunk_specs,
                                 max_issues=max_issues,
                                 custom_prompt=custom_prompt,
+                                file_contents=chunk_contents,
                             )
                             logger.info("Chunk %d/%d prompt: ~%d estimated tokens", chunk_idx + 1, n, _estimate_tokens(prompt))
-                            r = await with_rate_limit_retry(lambda: code_review_agent.run(
-                                user_prompt=prompt,
-                                model=chat_model,
-                                deps=_make_deps(chunk_files_inner),
-                            ))
-                            return r.output
+                            return await _run_review_with_wrapup(
+                                code_review_agent, prompt, chat_model,
+                                _make_deps(chunk_files_inner),
+                            )
 
                     chunk_results = await asyncio.gather(
                         *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)]
