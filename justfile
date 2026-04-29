@@ -67,17 +67,13 @@ web-typecheck:
 
 # --- Documentation ---
 
-# Install docs dependencies
-docs-install:
-    uv venv docs/.venv && uv pip install -r docs/requirements.txt --python docs/.venv/bin/python
-
 # Serve docs locally
 docs-serve:
-    docs/.venv/bin/mkdocs serve
+    uv run --with-requirements docs/requirements.txt --no-project -- mkdocs serve
 
 # Build docs (strict mode)
 docs-build:
-    docs/.venv/bin/mkdocs build --strict
+    uv run --with-requirements docs/requirements.txt --no-project -- mkdocs build --strict
 
 # Deploy docs for current version (extracts minor from pyproject.toml)
 docs-deploy:
@@ -86,19 +82,19 @@ docs-deploy:
     version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
     minor=$(echo "$version" | cut -d. -f1-2)
     echo "Deploying docs as $minor (from $version)"
-    docs/.venv/bin/mike deploy --push --update-aliases "$minor" latest
+    uv run --with-requirements docs/requirements.txt --no-project -- mike deploy --push --update-aliases "$minor" latest
 
 # Deploy docs for a specific version (e.g., just docs-deploy-version 0.3)
 docs-deploy-version VERSION:
-    docs/.venv/bin/mike deploy --push --update-aliases {{VERSION}} latest
+    uv run --with-requirements docs/requirements.txt --no-project -- mike deploy --push --update-aliases {{VERSION}} latest
 
 # List deployed doc versions
 docs-versions:
-    docs/.venv/bin/mike list
+    uv run --with-requirements docs/requirements.txt --no-project -- mike list
 
 # Delete a deployed doc version (e.g., just docs-delete 0.3)
 docs-delete VERSION:
-    docs/.venv/bin/mike delete --push {{VERSION}}
+    uv run --with-requirements docs/requirements.txt --no-project -- mike delete --push {{VERSION}}
 
 # --- Functional Tests ---
 

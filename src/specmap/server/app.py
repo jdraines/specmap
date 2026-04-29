@@ -34,6 +34,9 @@ from specmap.llm.retry import resilient_agent_call
 from specmap.llm.code_review_agent import CodeReviewDeps, review_agent, cross_boundary_agent, consolidation_agent
 from specmap.llm.code_review_schemas import CodeReviewResponse
 from specmap.llm.code_review_prompts import build_code_review_prompt, build_chunk_review_prompt, build_consolidation_prompt, build_cross_boundary_prompt
+from specmap.llm.verification_agent import verification_agent, verification_rescue_agent
+from specmap.llm.verification_prompts import build_verification_prompt
+from specmap.llm.verification_schemas import VerificationResult
 from specmap.llm.chat_prompts import build_chat_messages
 from specmap.llm.client import LLMClient
 from specmap.llm.walkthrough_prompts import build_walkthrough_prompt
@@ -2134,6 +2137,127 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         review_data = _FallbackResult()
                         review_data.summary = " ".join(chunk_summaries)
                         review_data.issues = deduped
+
+                # --- Phase 4: False-positive verification ---
+                # Normalize review_data.issues to list of dicts
+                issues_for_verification: list[dict] = []
+                for iss in review_data.issues:
+                    if hasattr(iss, "severity"):
+                        issues_for_verification.append({
+                            "issue_number": iss.issue_number,
+                            "severity": iss.severity,
+                            "title": iss.title,
+                            "description": iss.description,
+                            "file": iss.file,
+                            "start_line": iss.start_line or 0,
+                            "end_line": iss.end_line or iss.start_line or 0,
+                            "suggested_fix": iss.suggested_fix,
+                            "category": iss.category,
+                            "reasoning": iss.reasoning,
+                        })
+                    else:
+                        issues_for_verification.append(iss)
+
+                # Verify P0-P2 issues — where false positives matter most
+                _VERIFY_SEVERITIES = {"P0", "P1", "P2"}
+                to_verify = [iss for iss in issues_for_verification if iss.get("severity") in _VERIFY_SEVERITIES]
+                passthrough = [iss for iss in issues_for_verification if iss.get("severity") not in _VERIFY_SEVERITIES]
+
+                if to_verify:
+                    verification_concurrency = max(1, min(8, body.get("verification_concurrency", 4)))
+                    verification_budget = body.get("verification_budget", 12)
+                    n_issues = len(to_verify)
+
+                    yield _sse("progress", {
+                        "phase": "verifying",
+                        "detail": f"Verifying {n_issues} P0-P2 issues for false positives...",
+                        "verified": 0, "total_issues": n_issues,
+                    })
+
+                    shared_deps = _make_deps(changed_files)
+                    _verify_sem = asyncio.Semaphore(verification_concurrency)
+                    _verify_queue: asyncio.Queue = asyncio.Queue()
+
+                    async def _verify_issue(issue_data: dict, idx: int):
+                        async with _verify_sem:
+                            prompt = build_verification_prompt(
+                                issue=issue_data,
+                                file_patch=file_patches_map.get(issue_data.get("file", "")),
+                                pr_title=p.get("title", ""),
+                                changed_files=changed_files,
+                            )
+                            result = await resilient_agent_call(
+                                verification_agent, prompt, chat_model,
+                                rescue_agent=verification_rescue_agent,
+                                deps=shared_deps,
+                                soft_request_limit=verification_budget,
+                                output_type=VerificationResult,
+                            )
+                            await _verify_queue.put(idx)
+                            return result
+
+                    verify_tasks = [
+                        asyncio.create_task(_verify_issue(iss, i))
+                        for i, iss in enumerate(to_verify)
+                    ]
+
+                    verified_count = 0
+                    while verified_count < n_issues:
+                        try:
+                            await asyncio.wait_for(_verify_queue.get(), timeout=0.5)
+                            verified_count += 1
+                            yield _sse("progress", {
+                                "phase": "verifying",
+                                "detail": f"Verified {verified_count}/{n_issues} issues...",
+                                "verified": verified_count, "total_issues": n_issues,
+                            })
+                        except asyncio.TimeoutError:
+                            if all(t.done() for t in verify_tasks):
+                                break
+
+                    verified_issues: list[dict] = []
+                    dropped = 0
+                    downgraded = 0
+                    for i, (task, issue_data) in enumerate(zip(verify_tasks, to_verify)):
+                        try:
+                            vr = task.result()
+                        except BaseException as exc:
+                            logger.warning("Verification of issue %d failed: %s — keeping issue", i + 1, exc)
+                            verified_issues.append(issue_data)
+                            continue
+
+                        if vr is None:
+                            verified_issues.append(issue_data)
+                        elif vr.verdict == "false_positive":
+                            logger.info(
+                                "Issue %d dropped as false positive: %s",
+                                i + 1, vr.reasoning[:120],
+                            )
+                            dropped += 1
+                        elif vr.verdict == "downgrade":
+                            updated = dict(issue_data)
+                            if vr.updated_severity:
+                                updated["severity"] = vr.updated_severity
+                            if vr.updated_description:
+                                updated["description"] = vr.updated_description
+                            updated["reasoning"] = (
+                                updated.get("reasoning", "")
+                                + f"\n\n[Verification: downgraded from {issue_data.get('severity')}] "
+                                + vr.reasoning
+                            )
+                            verified_issues.append(updated)
+                            downgraded += 1
+                        else:  # confirmed
+                            verified_issues.append(issue_data)
+
+                    logger.info(
+                        "Verification complete: %d confirmed, %d dropped, %d downgraded (of %d)",
+                        len(verified_issues) - downgraded, dropped, downgraded, n_issues,
+                    )
+                    review_data.issues = verified_issues + passthrough
+                else:
+                    pass  # No P0-P2 issues — skip verification
+                # --- End Phase 4 ---
 
                 # Build changed lines set for filtering
                 import re as _re

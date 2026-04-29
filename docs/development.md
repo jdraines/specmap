@@ -189,7 +189,6 @@ just lint          # All lints (ruff + tsc)
 Docs use [MkDocs Material](https://squidfunnel.com/mkdocs-material/) with mike for versioning.
 
 ```bash
-just docs-install   # One-time: install mkdocs into docs/.venv
 just docs-serve     # Live-reload dev server at localhost:8000
 just docs-build     # Build static site (strict mode)
 ```

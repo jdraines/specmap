@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic_ai import Agent
 
-from specmap.llm.chat_agent import ChatDeps
+from specmap.llm.deps import ChatDeps
 from specmap.llm.code_review_prompts import (
     _CODE_REVIEW_SYSTEM,
     _CONSOLIDATION_SYSTEM,

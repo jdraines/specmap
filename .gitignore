@@ -32,7 +32,6 @@ tests/__pycache__/
 tests/**/__pycache__/
 
 # Documentation
-docs/.venv/
 site/
 
 # Node (web frontend)
