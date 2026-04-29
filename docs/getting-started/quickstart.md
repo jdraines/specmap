@@ -1,11 +1,11 @@
 # Quick Start
 
-This walkthrough takes you from zero to a validated spec-annotated codebase in four steps. This all happens in **your project's repo**, not in the specmap repo.
+This guide covers three ways to use specmap. Choose the approach that fits your workflow.
 
 ## Step 1: Install Specmap
 
 ```bash
-uv tool install git+https://github.com/jdraines/specmap.git
+pip install specmap
 ```
 
 This gives you two commands: `specmap` (CLI) and `specmap-mcp` (MCP server).
@@ -31,33 +31,76 @@ All passwords are hashed with bcrypt (cost factor 12)
 before storage. Plain-text passwords are never persisted.
 ```
 
-## Step 3: Code with Your Agent
+## Step 3: Generate Annotations
 
-Set your LLM API key and add the MCP server to your coding agent. In your project's `.mcp.json`:
+=== "Web UI"
 
-```json
-{
-  "mcpServers": {
-    "specmap": {
-      "command": "specmap-mcp",
-      "env": {
-        "SPECMAP_API_KEY": "sk-..."
+    Launch the web UI to review PRs with annotations, walkthroughs, and code reviews:
+
+    ```bash
+    specmap serve
+    ```
+
+    The browser opens automatically. On first run, you'll be prompted for an LLM API key if one isn't configured.
+
+    From the dashboard, navigate to a PR. Then:
+
+    - **Generate Annotations** -- click in the toolbar to create spec-linked annotations for the PR's changes
+    - **Walkthrough** -- generate an AI-guided narrative tour of the PR
+    - **Code Review** -- run an AI code review with severity ratings and suggested fixes
+
+    The web UI needs a forge token (GitHub PAT or GitLab token) to fetch repository data. See [Web UI Overview](../web-ui/overview.md) for authentication details.
+
+=== "MCP + Agent"
+
+    Add the MCP server to your coding agent. In your project's `.mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "specmap": {
+          "command": "specmap-mcp",
+          "env": {
+            "SPECMAP_API_KEY": "sk-..."
+          }
+        }
       }
     }
-  }
-}
-```
+    ```
 
-Start coding on a feature branch. As your agent writes code, it calls `specmap_annotate` automatically to create annotations linking code changes to spec requirements.
+    Start coding on a feature branch. As your agent writes code, it calls `specmap_annotate` automatically to create annotations linking code changes to spec requirements.
 
-Behind the scenes, the MCP server:
+    Behind the scenes, the MCP server:
 
-1. Runs `git diff` to find changed code
-2. Reads the spec files in the repo
-3. Sends the diff and specs to the LLM, which generates annotations with `[N]` spec citations
-4. Writes annotations to `.specmap/{branch}.json`
+    1. Runs `git diff` to find changed code
+    2. Reads the spec files in the repo
+    3. Sends the diff and specs to the LLM, which generates annotations with `[N]` spec citations
+    4. Writes annotations to `.specmap/{branch}.json`
 
-By default, Specmap uses `gpt-4o-mini`. See [Configuration](configuration.md) to use a different model or provider.
+    By default, Specmap uses `gpt-4o-mini`. See [Configuration](configuration.md) to use a different model or provider.
+
+=== "CLI"
+
+    Generate annotations directly from the command line:
+
+    ```bash
+    # Set your LLM API key
+    export SPECMAP_API_KEY="sk-..."
+
+    # Annotate all changes on the current branch
+    specmap annotate
+
+    # Or annotate specific files
+    specmap annotate src/auth.py src/session.py
+    ```
+
+    This generates `.specmap/{branch}.json` containing annotations with `[N]` spec citations.
+
+    You can also install a git hook to annotate automatically on every commit:
+
+    ```bash
+    specmap hook install
+    ```
 
 ## Step 4: Check Status
 

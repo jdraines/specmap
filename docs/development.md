@@ -17,7 +17,7 @@ Everything you need to clone and run specmap locally.
 ```bash
 git clone https://github.com/jdraines/specmap.git
 cd specmap
-just mcp-install     # Python deps (core library + MCP server + CLI + API server + test deps)
+just install         # Python deps (core library + MCP server + CLI + API server + test deps)
 just web-install     # Node deps (React frontend)
 ```
 
@@ -27,17 +27,17 @@ The web UI needs a forge token to fetch repo data on your behalf. Specmap auto-d
 
 ### 1. Set a personal access token
 
-**GitHub** — use any of these methods (checked in order):
+**GitHub** -- use any of these methods (checked in order):
 
 1. Set `GITHUB_TOKEN` (or `GH_TOKEN`) environment variable
-2. Have `gh` CLI authenticated (`gh auth login`) — specmap falls back to `gh auth token`
+2. Have `gh` CLI authenticated (`gh auth login`) -- specmap falls back to `gh auth token`
 
 The token needs `repo` scope for private repositories, or no scope for public-only.
 
-**GitLab** — use any of these methods (checked in order):
+**GitLab** -- use any of these methods (checked in order):
 
 1. Set `GITLAB_TOKEN` environment variable
-2. Have `glab` CLI authenticated — specmap falls back to `glab config get token`
+2. Have `glab` CLI authenticated -- specmap falls back to `glab config get token`
 
 The token needs `read_api` and `read_repository` scopes.
 
@@ -59,7 +59,7 @@ Session secrets are auto-generated if not provided.
 
 If your organization restricts PATs, you can configure OAuth instead:
 
-**GitHub** — Go to [github.com/settings/developers](https://github.com/settings/developers) > **OAuth Apps** > **New OAuth App**:
+**GitHub** -- Go to [github.com/settings/developers](https://github.com/settings/developers) > **OAuth Apps** > **New OAuth App**:
 
 | Field | Value |
 |-------|-------|
@@ -67,7 +67,7 @@ If your organization restricts PATs, you can configure OAuth instead:
 | Homepage URL | `http://localhost:8080` |
 | Authorization callback URL | `http://localhost:8080/api/v1/auth/callback/github` |
 
-**GitLab** — Go to your GitLab instance > **Preferences** > **Applications** > **New Application**:
+**GitLab** -- Go to your GitLab instance > **Preferences** > **Applications** > **New Application**:
 
 | Field | Value |
 |-------|-------|
@@ -107,31 +107,36 @@ just web-dev
 
 ```
 specmap/
-├── core/                  # Python: core library, MCP server, CLI, API server
-│   ├── src/specmap/       # Source code
-│   │   ├── indexer/       # Diff analysis, annotation engine, diff optimizer
-│   │   ├── state/         # Models, specmap file I/O
-│   │   ├── llm/           # LLM client, prompts, schemas
-│   │   ├── tools/         # MCP tool implementations
-│   │   ├── mcp/           # MCP server entrypoint
-│   │   ├── cli/           # Typer CLI entrypoint + commands
-│   │   └── server/        # FastAPI server (auth, forge API, SQLite)
-│   ├── tests/             # Unit tests (pytest)
-│   └── pyproject.toml
-├── web/                   # React frontend
+├── src/specmap/               Python: core library, MCP server, CLI, API server
+│   ├── indexer/               Diff analysis, annotation engine, diff optimizer
+│   ├── state/                 Models, specmap file I/O
+│   ├── llm/                   LLM client, prompts, agents, schemas
+│   │   ├── client.py          litellm wrapper with retry & token tracking
+│   │   ├── prompts.py         Annotation generation prompts
+│   │   ├── schemas.py         Annotation response schemas
+│   │   ├── chat_agent.py      Pydantic AI chat agent with tools
+│   │   ├── code_review_agent.py  Three-phase code review pipeline
+│   │   ├── walkthrough_*.py   Walkthrough prompts and schemas
+│   │   └── code_review_*.py   Code review prompts and schemas
+│   ├── tools/                 MCP tool implementations
+│   ├── mcp/                   MCP server entrypoint
+│   ├── cli/                   Typer CLI entrypoint + commands
+│   ├── server/                FastAPI server (auth, forge API, generation, SQLite)
+│   ├── config.py              Two-layer TOML config system
+│   └── _static/               Bundled frontend (populated by build)
+├── web/                       React frontend (Vite + Tailwind)
 │   ├── src/
-│   │   ├── api/           # TypeScript API client
-│   │   ├── stores/        # Zustand state management
-│   │   ├── hooks/         # Custom React hooks
-│   │   ├── components/    # React components
-│   │   └── pages/         # Route pages
+│   │   ├── api/               TypeScript API client + SSE streaming
+│   │   ├── stores/            Zustand state management
+│   │   ├── hooks/             Custom React hooks
+│   │   ├── components/        React components (diff, review, walkthrough, etc.)
+│   │   └── pages/             Route pages (Login, Dashboard, PRReview)
 │   └── vite.config.ts
-├── tests/                 # Functional test suite
-│   ├── conftest.py        # Session fixtures
-│   ├── harness/           # Test infrastructure
-│   └── scenarios/         # End-to-end test scenarios
-├── docs/                  # MkDocs documentation
-├── justfile               # Task runner
+├── tests/                     Test suite
+│   ├── unit/                  Unit tests (pytest)
+│   └── scenarios/             Functional end-to-end test scenarios
+├── docs/                      MkDocs documentation
+├── justfile                   Task runner
 └── mkdocs.yml
 ```
 
@@ -142,13 +147,13 @@ specmap/
 Focused on individual components -- annotation engine, diff optimizer, models, file I/O, code analyzer.
 
 ```bash
-just mcp-test
+just test
 ```
 
 Run with coverage:
 
 ```bash
-just mcp-test-cov
+just test-cov
 ```
 
 ### Functional Tests
@@ -167,15 +172,14 @@ The functional tests create temporary git repos, mock `litellm.acompletion`, cal
 ### All Tests
 
 ```bash
-just test       # Unit tests only
 just test-all   # Unit + functional tests
 ```
 
 ## Linting and Formatting
 
 ```bash
-just mcp-lint      # ruff check
-just mcp-fmt       # ruff format
+just lint-py       # ruff check
+just fmt           # ruff format
 just web-typecheck # tsc --noEmit
 just lint          # All lints (ruff + tsc)
 ```

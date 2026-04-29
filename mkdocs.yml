@@ -62,22 +62,26 @@ nav:
       - Installation: getting-started/installation.md
       - Quick Start: getting-started/quickstart.md
       - Configuration: getting-started/configuration.md
-      - Local Development: getting-started/local-dev.md
-  - MCP Server:
-      - Overview: mcp/overview.md
-      - Tools Reference: mcp/tools.md
-      - LLM Integration: mcp/llm.md
+  - Web UI:
+      - Overview: web-ui/overview.md
+      - Generating Annotations: web-ui/generating-annotations.md
+      - Guided Walkthroughs: web-ui/walkthroughs.md
+      - AI Code Review: web-ui/code-review.md
   - CLI:
       - Overview: cli/overview.md
       - Commands Reference: cli/commands.md
       - CI Integration: cli/ci.md
+  - MCP Server:
+      - Overview: mcp/overview.md
+      - Tools Reference: mcp/tools.md
+      - LLM Integration: mcp/llm.md
   - Concepts:
       - Architecture: concepts/architecture.md
       - Specmap Format: concepts/format.md
       - Versioning: concepts/versioning.md
-      - Hashing & Reindexing: concepts/hashing.md
+      - Diff-Based Optimization: concepts/hashing.md
       - Annotations: concepts/coverage.md
   - Development: development.md
-  - Plans:
-    - Roadmap: roadmap.md
-    - Production Deployment: deployment/production.md
+  - Deployment:
+      - Production: deployment/production.md
+  - Roadmap: roadmap.md

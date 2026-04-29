@@ -1,69 +1,43 @@
 # Versioning
 
-Specmap uses **two version groups** that release independently.
-
-## Version Groups
-
-| Group | Components | Source of truth | Git tag |
-|-------|-----------|----------------|---------|
-| **core** | Python library, CLI, MCP server | `pyproject.toml` | `core/v0.1.0` |
-| **web** | Python API + React frontend | `pyproject.toml` | `web/v0.1.0` |
-
-### Why two groups?
-
-The core tools (CLI, MCP server) are installed locally by developers and evolve based on annotation/validation needs. The web components (API server, frontend) are deployed together as a single service and evolve based on UI and collaboration features. Separating them allows each to release at its own cadence without unnecessary coupling.
-
-### The schema contract
-
-The specmap JSON schema (`version: 2`) is the interop contract between core and web. It is an integer in the model definitions — not a release version, and it does not get a git tag. When the schema version increments, both groups must be updated to support it.
+Specmap uses a single version tracked in `pyproject.toml`. The Python package (core library, CLI, MCP server, API server) and the React frontend are versioned together and released as one wheel.
 
 ## Checking Versions
 
 ```bash
-# Core version
-specmap --version          # specmap 0.1.0
-
-# Web version (API health endpoint)
-curl -s https://localhost:8080/healthz
-# {"status":"ok","version":"0.1.0"}
-
-# Both at once
-just versions
+specmap --version          # specmap 0.4.0
 ```
 
 ## Bumping Versions
 
 ```bash
-# Bump core (updates pyproject.toml)
-just version 0.2.0
-git tag v0.2.0
+# Update pyproject.toml
+just version 0.5.0
 
-# Bump web (updates api/VERSION)
-just web-version 0.2.0
-git tag web/v0.2.0
+# Or release: bump, commit, tag, and push (triggers PyPI publish via GitHub Actions)
+just release 0.5.0
 ```
 
-The `just` commands update the source-of-truth file and print a reminder to create the git tag. Tags are manual — there is no automated release pipeline yet.
+The `just release` command updates `pyproject.toml`, commits the change, creates a `v{VERSION}` git tag, and pushes. The GitHub Actions workflow (`publish.yml`) builds the wheel (including the bundled frontend) and publishes to PyPI via trusted publishing.
 
 ## Git Tag Convention
 
-- **Core releases**: `core/v{major}.{minor}.{patch}` (e.g., `core/v0.1.0`)
-- **Web releases**: `web/v{major}.{minor}.{patch}` (e.g., `web/v0.1.0`)
+Tags follow the format `v{major}.{minor}.{patch}` (e.g., `v0.4.0`).
 
 Both follow [semantic versioning](https://semver.org/). During pre-1.0 development, minor bumps may include breaking changes.
 
-## Compatibility Matrix
+## The Schema Contract
 
-| Core | Web | Schema |
-|------|-----|--------|
-| 0.1.x | 0.1.x | 2 |
+The specmap JSON schema (`version: 2`) is the interop contract between the annotation generator and consumers (CLI validation, web UI). It is an integer in the model definitions -- not a release version. When the schema version increments, the annotation generator and all consumers must be updated to support it.
 
-Core and web are compatible as long as they agree on the schema version. The API server reads specmap JSON files produced by core — if the schema `version` field matches, they interoperate.
+## Frontend Bundling
+
+The React frontend is built and bundled into the Python wheel during package installation via a Hatch custom build hook. Running `just build` or `uv build` produces a wheel that includes the compiled frontend in `specmap/_static/`. No separate frontend deployment is needed.
 
 ## Documentation Versions
 
-Documentation versions (via [mike](https://github.com/jimporter/mike)) track **core** releases, since the docs primarily cover the CLI and MCP tools that developers install locally.
+Documentation versions (via [mike](https://github.com/jimporter/mike)) track releases:
 
 ```bash
-just docs-deploy 0.1    # Deploy docs for core v0.1
+just docs-deploy 0.4    # Deploy docs for v0.4
 ```

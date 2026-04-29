@@ -24,10 +24,16 @@ Set the model via environment variable or config file:
 ```bash
 # Environment variable (takes precedence)
 export SPECMAP_MODEL="gpt-4o-mini"
-
-# Or in .specmap/config.json
-{"model": "gpt-4o-mini"}
 ```
+
+Or in `.specmap/config.toml` (repo level) or `~/.config/specmap/config.toml` (user level):
+
+```toml
+[llm]
+model = "gpt-4o-mini"
+```
+
+See [Configuration](../getting-started/configuration.md) for the full config system.
 
 ## Token Tracking
 
