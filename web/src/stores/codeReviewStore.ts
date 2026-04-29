@@ -34,6 +34,7 @@ interface CodeReviewState {
   setContextLines: (n: number) => void;
   setChunkThreshold: (n: number) => void;
   setConcurrency: (n: number) => void;
+  loadExisting: (fullName: string, prNumber: number) => Promise<void>;
   generate: (fullName: string, number: number, force?: boolean) => Promise<void>;
   cancelGenerate: () => void;
   start: () => void;
@@ -98,6 +99,15 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
   setConcurrency: (n) => {
     localStorage.setItem('specmap-cr-concurrency', JSON.stringify(n));
     set({ concurrency: n });
+  },
+
+  loadExisting: async (fullName, prNumber) => {
+    try {
+      const cr = await codeReviewApi.get(fullName, prNumber);
+      set({ review: cr });
+    } catch {
+      // No existing review — that's fine
+    }
   },
 
   generate: async (fullName, number, force) => {

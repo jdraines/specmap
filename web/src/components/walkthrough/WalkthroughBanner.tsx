@@ -35,6 +35,7 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
     generate,
     cancelGenerate,
     start,
+    flashKey,
   } = useWalkthroughStore();
 
   const elapsed = useElapsedTime(loading);
@@ -51,10 +52,6 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
       }`}
     >
       {walkthrough ? (() => {
-        const selectedMatchesLoaded = familiarity === walkthrough.familiarity && depth === walkthrough.depth;
-        const cacheKey = `f${familiarity}.${depth}`;
-        const hasCachedVariant = cacheKey in cache;
-        const showGenerate = !selectedMatchesLoaded && !hasCachedVariant;
         return (
         <>
           <p className="text-sm text-[var(--text-primary)] mb-3">{renderTextWithBold(walkthrough.summary, 'summary')}</p>
@@ -69,6 +66,31 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
               {familiarityOptions.find((o) => o.value === walkthrough.familiarity)?.label} · {walkthrough.depth}
             </span>
           </div>
+
+          {Object.keys(cache).length > 1 && (
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs font-semibold text-[var(--text-primary)]">Existing walkthroughs:</span>
+              {Object.entries(cache).map(([key, wt]) => {
+                const isCurrent = wt === walkthrough;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      useWalkthroughStore.getState().setFamiliarity(wt.familiarity);
+                      useWalkthroughStore.getState().setDepth(wt.depth);
+                    }}
+                    className={`px-2 py-0.5 text-[10px] border rounded cursor-pointer ${
+                      isCurrent
+                        ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                        : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--accent)]'
+                    } ${flashKey === key ? 'flash-glow' : ''}`}
+                  >
+                    {familiarityOptions.find((o) => o.value === wt.familiarity)?.label} · {wt.depth} ({wt.steps.length} steps)
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-1">
@@ -105,14 +127,17 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
               ))}
             </div>
 
-            {showGenerate && (
-              <button
-                onClick={() => generate(fullName, prNumber)}
-                disabled={loading}
-                className="px-3 py-1.5 text-xs font-semibold bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Generating...' : 'Generate Walkthrough'}
-              </button>
+            <button
+              onClick={() => generate(fullName, prNumber)}
+              disabled={loading}
+              className="px-3 py-1.5 text-xs font-semibold bg-[var(--accent)] text-white border-0 cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Generating...' : 'Generate Walkthrough'}
+            </button>
+            {flashKey && (
+              <span className="text-xs font-medium flash-text" style={{ color: 'var(--flash-glow-color)' }}>
+                Walkthrough already exists
+              </span>
             )}
             {loading && (
               <span className="text-xs text-[var(--text-secondary)]">

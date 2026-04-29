@@ -464,3 +464,31 @@ tr.ann-line-hl > td:first-child {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
+
+/* ── Flash glow for cached walkthrough variant ── */
+@keyframes flash-glow {
+  0% { box-shadow: 0 0 8px 3px var(--flash-glow-color); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes flash-text {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+:root {
+  --flash-glow-color: #7c3aed;
+}
+
+.dark {
+  --flash-glow-color: rgba(255, 255, 255, 0.6);
+}
+
+.flash-glow {
+  animation: flash-glow 2s ease-out;
+}
+
+.flash-text {
+  animation: flash-text 2s ease-out forwards;
+}

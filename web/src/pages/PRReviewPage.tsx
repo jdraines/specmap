@@ -90,6 +90,8 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
   const codeReviewData = useCodeReviewStore((s) => s.review);
   const codeReviewIssueIdx = useCodeReviewStore((s) => s.currentIssue);
   const checkCodeReviewAvailable = useCodeReviewStore((s) => s.checkAvailable);
+  const loadExistingWalkthrough = useWalkthroughStore((s) => s.loadExisting);
+  const loadExistingCodeReview = useCodeReviewStore((s) => s.loadExisting);
   const fetchComments = useCommentStore((s) => s.fetchComments);
   const startPolling = useCommentStore((s) => s.startPolling);
   const stopPolling = useCommentStore((s) => s.stopPolling);
@@ -116,10 +118,13 @@ export function PRReviewPage({ fullName, prNumber }: PRReviewPageProps) {
     checkWalkthroughAvailable();
     checkCodeReviewAvailable();
     checkCanGenerate();
+    loadExistingWalkthrough(fullName, prNumber);
+    loadExistingCodeReview(fullName, prNumber);
     fetchComments(fullName, prNumber);
     startPolling(fullName, prNumber);
     return () => stopPolling();
-  }, [fullName, prNumber, fetchReview, setContext, checkWalkthroughAvailable, checkCodeReviewAvailable, checkCanGenerate, fetchComments, startPolling, stopPolling]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullName, prNumber]);
 
   // Preload spec files referenced by annotations and walkthrough
   useEffect(() => {

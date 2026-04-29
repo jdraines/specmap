@@ -204,6 +204,15 @@ export interface Settings {
   model: string;
 }
 
+export interface WalkthroughVariant {
+  familiarity: number;
+  depth: string;
+  summary: string;
+  step_count: number;
+  head_sha: string;
+  updated_at: string;
+}
+
 export interface CodeReviewProgress {
   phase: 'preparing' | 'reviewing' | 'consolidating';
   detail: string;

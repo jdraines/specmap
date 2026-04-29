@@ -32,6 +32,7 @@ from pydantic_ai.messages import (
 from specmap.llm.chat_agent import ChatDeps, chat_agent
 from specmap.llm.retry import resilient_agent_call
 from specmap.llm.code_review_agent import CodeReviewDeps, review_agent, cross_boundary_agent, consolidation_agent
+from specmap.llm.code_review_schemas import CodeReviewResponse
 from specmap.llm.code_review_prompts import build_code_review_prompt, build_chunk_review_prompt, build_consolidation_prompt, build_cross_boundary_prompt
 from specmap.llm.chat_prompts import build_chat_messages
 from specmap.llm.client import LLMClient
@@ -1071,6 +1072,71 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
     # --- Walkthrough ---
 
+    async def _handle_get_walkthrough(request: Request, owner: str, repo: str, number: int):
+        """GET: return existing walkthrough if cached, else 404."""
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+
+        familiarity = int(request.query_params.get("familiarity", "2"))
+        depth = request.query_params.get("depth", "quick")
+
+        p = await provider.get_pull(_http(request), token, owner, repo, number)
+        branch = p["head_branch"]
+        head_sha = p["head_sha"]
+
+        existing = await _load_walkthrough(
+            request, provider, token, owner, repo,
+            branch, head_sha, familiarity, depth,
+        )
+        if existing and existing.get("head_sha") == head_sha:
+            return existing
+        raise HTTPError(404, "No cached walkthrough found")
+
+    async def _handle_list_walkthroughs(request: Request, owner: str, repo: str, number: int):
+        """GET: list all cached walkthrough variants for this PR."""
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+
+        p = await provider.get_pull(_http(request), token, owner, repo, number)
+        branch = p["head_branch"]
+        head_sha = p["head_sha"]
+
+        # Check local and user data dir
+        variants = []
+        seen = set()
+        candidates: list[SpecmapFileManager] = []
+        if _is_local(request, owner, repo):
+            candidates.append(_file_mgr())
+        candidates.append(_user_file_mgr(request, owner, repo))
+
+        for mgr in candidates:
+            for v in mgr.list_walkthroughs(branch):
+                key = f"f{v['familiarity']}.{v['depth']}"
+                if key not in seen and v.get("head_sha") == head_sha:
+                    seen.add(key)
+                    variants.append(v)
+
+        return {"variants": variants}
+
+    async def _handle_get_code_review(request: Request, owner: str, repo: str, number: int):
+        """GET: return existing code review if cached, else 404."""
+        claims = _get_current_user(request)
+        token = _get_forge_token(request, claims)
+        provider = _provider(request)
+
+        p = await provider.get_pull(_http(request), token, owner, repo, number)
+        branch = p["head_branch"]
+        head_sha = p["head_sha"]
+
+        existing = await _load_code_review(
+            request, provider, token, owner, repo, branch, head_sha,
+        )
+        if existing and existing.get("head_sha") == head_sha:
+            return existing
+        raise HTTPError(404, "No cached code review found")
+
     async def _handle_generate_walkthrough(request: Request, owner: str, repo: str, number: int):
         cfg = _cfg(request)
         if not cfg.core.api_key:
@@ -1749,13 +1815,15 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             if existing_cr and existing_cr.get("head_sha") == head_sha:
                 return existing_cr
 
-        async def _run_two_phase_review(prompt, chunk_patches, model, deps, all_changed_files, skip_phase2=False):
+        async def _run_two_phase_review(prompt, chunk_patches, model, deps, all_changed_files, skip_phase2=False, chunk_label=""):
             """Two-phase review: toolless analysis + targeted cross-boundary check."""
             # Phase 1: Toolless review (rescue on failure, returns None if all fails)
-            logger.info("Phase 1: toolless review (~%d estimated tokens)", len(prompt) // 4)
+            label = f" [{chunk_label}]" if chunk_label else ""
+            logger.info("Phase 1%s: toolless review (~%d estimated tokens)", label, len(prompt) // 4)
             p1_output = await resilient_agent_call(
                 review_agent, prompt, model,
                 rescue_agent=review_agent,
+                output_type=CodeReviewResponse,
             )
             p1_issues = []
             summary = ""
@@ -1774,24 +1842,24 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         "category": iss.category,
                         "reasoning": iss.reasoning,
                     })
-                logger.info("Phase 1 found %d issues", len(p1_issues))
+                logger.info("Phase 1%s: found %d issues", label, len(p1_issues))
             else:
-                logger.warning("Phase 1 failed entirely — proceeding with empty issues")
+                logger.warning("Phase 1%s: failed entirely — proceeding with empty issues", label)
 
             # Phase 2: Cross-boundary verification (toolless, pre-computed references)
             if skip_phase2:
-                logger.info("Phase 2: skipped (single-chunk PR)")
+                logger.info("Phase 2%s: skipped (single-chunk PR)", label)
             else:
                 chunk_file_set = {fp["filename"] for fp in chunk_patches}
                 changed_symbols = _extract_changed_symbols(chunk_patches)
-                logger.info("Phase 2: found %d changed symbols", len(changed_symbols))
+                logger.info("Phase 2%s: found %d changed symbols", label, len(changed_symbols))
 
                 if changed_symbols:
                     cross_refs = await _find_cross_boundary_references(
                         provider, _http(request), token, owner, repo, head_sha,
                         changed_symbols, chunk_file_set,
                     )
-                    logger.info("Phase 2: found %d external references", len(cross_refs))
+                    logger.info("Phase 2%s: found %d external references", label, len(cross_refs))
 
                     cb_prompt = build_cross_boundary_prompt(
                         chunk_patches=chunk_patches,
@@ -1799,11 +1867,12 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         cross_references=cross_refs,
                         phase1_issues=p1_issues,
                     )
-                    logger.info("Phase 2: cross-boundary prompt (~%d estimated tokens)", len(cb_prompt) // 4)
+                    logger.info("Phase 2%s: cross-boundary prompt (~%d estimated tokens)", label, len(cb_prompt) // 4)
                     try:
                         p2_output = await resilient_agent_call(
                             cross_boundary_agent, cb_prompt, model,
                             rescue_agent=review_agent,
+                            output_type=CodeReviewResponse,
                         )
                         if p2_output is not None:
                             for iss in p2_output.issues:
@@ -1819,9 +1888,9 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                     "category": iss.category,
                                     "reasoning": iss.reasoning,
                                 })
-                            logger.info("Phase 2 found %d additional issues", len(p2_output.issues))
+                            logger.info("Phase 2%s: found %d additional issues", label, len(p2_output.issues))
                     except Exception as e:
-                        logger.warning("Phase 2 cross-boundary check failed: %s", e)
+                        logger.warning("Phase 2%s: cross-boundary check failed: %s", label, e)
 
             return summary, p1_issues
 
@@ -1955,9 +2024,11 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks (max {concurrency} concurrent)...", "chunk": 0, "total_chunks": n})
 
                     _chunk_sem = asyncio.Semaphore(concurrency)
+                    _progress_queue: asyncio.Queue = asyncio.Queue()
 
                     async def _review_chunk(chunk_patches: list[dict], chunk_idx: int):
                         async with _chunk_sem:
+                            chunk_lbl = f"chunk {chunk_idx + 1}/{n}"
                             rich = await _enrich_patches(chunk_patches)
                             chunk_files_inner = [fp["filename"] for fp in chunk_patches]
                             chunk_ann = [a for a in annotations_list if a.get("file") in chunk_files_inner]
@@ -1982,18 +2053,46 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                 custom_prompt=custom_prompt,
                                 file_tree=repo_file_tree,
                             )
-                            logger.info("Chunk %d/%d prompt: ~%d estimated tokens", chunk_idx + 1, n, _estimate_tokens(prompt))
+                            logger.info("[%s] prompt: ~%d estimated tokens", chunk_lbl, _estimate_tokens(prompt))
                             summary, issues = await _run_two_phase_review(
                                 prompt, chunk_patches, chat_model,
                                 _make_deps(chunk_files_inner),
                                 changed_files,
+                                chunk_label=chunk_lbl,
                             )
+                            await _progress_queue.put(chunk_idx)
                             return summary, issues
 
-                    chunk_results = await asyncio.gather(
-                        *[_review_chunk(chunk, i) for i, chunk in enumerate(chunks)],
-                        return_exceptions=True,
-                    )
+                    # Launch all tasks
+                    tasks = [
+                        asyncio.create_task(_review_chunk(chunk, i))
+                        for i, chunk in enumerate(chunks)
+                    ]
+
+                    # Drain queue for live progress updates
+                    completed = 0
+                    while completed < n:
+                        try:
+                            await asyncio.wait_for(_progress_queue.get(), timeout=0.5)
+                            completed += 1
+                            yield _sse("progress", {
+                                "phase": "reviewing",
+                                "detail": f"Chunk {completed}/{n} complete...",
+                                "chunk": completed,
+                                "total_chunks": n,
+                            })
+                        except asyncio.TimeoutError:
+                            # Check if any tasks failed
+                            if all(t.done() for t in tasks):
+                                break
+
+                    # Collect results
+                    chunk_results = []
+                    for t in tasks:
+                        try:
+                            chunk_results.append(t.result())
+                        except BaseException as exc:
+                            chunk_results.append(exc)
 
                     all_issues: list[dict] = []
                     chunk_summaries: list[str] = []
@@ -2025,6 +2124,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     review_data = await resilient_agent_call(
                         consolidation_agent, consolidation_prompt, chat_model,
                         rescue_agent=consolidation_agent,
+                        output_type=CodeReviewResponse,
                     )
                     if review_data is None:
                         logger.warning("Consolidation failed — using raw deduped issues")
@@ -2441,10 +2541,16 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             return await _handle_generate_annotations(request, owner, name, number)
         if action == "cache" and method == "DELETE":
             return await _handle_clear_cache(request, owner, name, number)
+        if action == "walkthrough" and method == "GET":
+            return await _handle_get_walkthrough(request, owner, name, number)
+        if action == "walkthroughs" and method == "GET":
+            return await _handle_list_walkthroughs(request, owner, name, number)
         if action == "walkthrough" and method == "POST":
             return await _handle_generate_walkthrough(request, owner, name, number)
         if action == "walkthrough/chat" and method == "POST":
             return await _handle_walkthrough_chat(request, owner, name, number)
+        if action == "code-review" and method == "GET":
+            return await _handle_get_code_review(request, owner, name, number)
         if action == "code-review" and method == "POST":
             return await _handle_generate_code_review(request, owner, name, number)
         if action == "code-review/chat" and method == "POST":

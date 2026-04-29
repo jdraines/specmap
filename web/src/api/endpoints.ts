@@ -10,6 +10,7 @@ import type {
   SpecContent,
   AuthStatus,
   Walkthrough,
+  WalkthroughVariant,
   Capabilities,
   GenerateProgress,
   PaginatedResponse,
@@ -98,6 +99,14 @@ export const capabilities = {
 };
 
 export const walkthrough = {
+  get: (fullName: string, number: number, familiarity: number, depth: string) =>
+    apiFetch<Walkthrough>(
+      `/api/v1/repos/${fullName}/pulls/${number}/walkthrough?familiarity=${familiarity}&depth=${depth}`,
+    ),
+  list: (fullName: string, number: number) =>
+    apiFetch<{ variants: WalkthroughVariant[] }>(
+      `/api/v1/repos/${fullName}/pulls/${number}/walkthroughs`,
+    ),
   generate: (fullName: string, number: number, familiarity: number, depth: string, signal?: AbortSignal) =>
     apiFetch<Walkthrough>(
       `/api/v1/repos/${fullName}/pulls/${number}/walkthrough`,
@@ -125,6 +134,10 @@ export const walkthrough = {
 };
 
 export const codeReview = {
+  get: (fullName: string, number: number) =>
+    apiFetch<CodeReview>(
+      `/api/v1/repos/${fullName}/pulls/${number}/code-review`,
+    ),
   generate: (
     fullName: string,
     number: number,

@@ -161,6 +161,33 @@ class SpecmapFileManager:
         path.write_text(json_str, encoding="utf-8")
         return path
 
+    def list_walkthroughs(self, branch: str) -> list[dict]:
+        """List all walkthrough variants for a branch.
+
+        Returns list of {familiarity, depth, summary, step_count, head_sha, updated_at}.
+        """
+        sanitized = self._sanitize_branch(branch)
+        pattern = f"{sanitized}.walkthrough.f*.*.json"
+        results = []
+        specmap_dir = self._specmap_dir()
+        if not specmap_dir.exists():
+            return results
+        for path in specmap_dir.glob(pattern):
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                results.append({
+                    "familiarity": data.get("familiarity", 2),
+                    "depth": data.get("depth", "quick"),
+                    "summary": data.get("summary", ""),
+                    "step_count": len(data.get("steps", [])),
+                    "head_sha": data.get("head_sha", ""),
+                    "updated_at": data.get("updated_at", ""),
+                })
+            except (json.JSONDecodeError, OSError):
+                continue
+        return results
+
     def _code_review_path(self, branch: str) -> Path:
         """Get the path for a branch's code review file."""
         sanitized = self._sanitize_branch(branch)

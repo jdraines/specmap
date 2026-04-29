@@ -32,6 +32,8 @@ interface WalkthroughState {
 
   setFamiliarity: (f: number) => void;
   setDepth: (d: 'quick' | 'thorough') => void;
+  loadExisting: (fullName: string, prNumber: number) => Promise<void>;
+  flashKey: string | null;
   generate: (fullName: string, number: number) => Promise<void>;
   cancelGenerate: () => void;
   start: () => void;
@@ -64,6 +66,7 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   familiarity: loadStorage('specmap-wt-familiarity', 2),
   depth: loadStorage('specmap-wt-depth', 'quick'),
   available: false,
+  flashKey: null,
 
   // Chat state
   chatExpanded: {},
@@ -86,15 +89,48 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
     set({ depth: d, ...(cached ? { walkthrough: cached, currentStep: 0 } : {}) });
   },
 
+  loadExisting: async (fullName, prNumber) => {
+    try {
+      const { variants } = await walkthroughApi.list(fullName, prNumber);
+      if (variants.length === 0) return;
+
+      // Load each variant's full data into cache
+      const { familiarity, depth } = get();
+      const newCache: Record<string, any> = { ...get().cache };
+      let currentWt = null;
+
+      for (const v of variants) {
+        const key = walkthroughKey(v.familiarity, v.depth);
+        try {
+          const wt = await walkthroughApi.get(fullName, prNumber, v.familiarity, v.depth);
+          newCache[key] = wt;
+          if (v.familiarity === familiarity && v.depth === depth) {
+            currentWt = wt;
+          }
+        } catch {
+          // Skip variants that fail to load
+        }
+      }
+
+      set({
+        cache: newCache,
+        ...(currentWt ? { walkthrough: currentWt } : {}),
+      });
+    } catch {
+      // No existing walkthroughs — that's fine
+    }
+  },
+
   generate: async (fullName, number) => {
     const { familiarity, depth, cache } = get();
     const key = walkthroughKey(familiarity, depth);
 
-    // Return cached variant if head_sha matches (instant switch)
+    // If already cached, flash-highlight instead of regenerating
     const cached = cache[key];
     if (cached) {
-      // We still call the API to let the server check staleness, but
-      // the server will return instantly if head_sha matches.
+      set({ walkthrough: cached, currentStep: 0, flashKey: key });
+      setTimeout(() => set({ flashKey: null }), 1500);
+      return;
     }
 
     const controller = new AbortController();
