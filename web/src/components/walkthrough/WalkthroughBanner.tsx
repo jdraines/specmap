@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useWalkthroughStore } from '../../stores/walkthroughStore';
 import { renderTextWithBold } from './WalkthroughStepCard';
 import { Spinner } from '../ui/Spinner';
@@ -30,18 +29,15 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
     error,
     familiarity,
     depth,
-    timeout,
     available,
     setFamiliarity,
     setDepth,
-    setTimeout: setStoreTimeout,
     generate,
     cancelGenerate,
     start,
   } = useWalkthroughStore();
 
   const elapsed = useElapsedTime(loading);
-  const [timeoutInput, setTimeoutInput] = useState(String(timeout));
 
   if (!available || !hasAnnotations) return null;
   if (active) return null;
@@ -175,20 +171,6 @@ export function WalkthroughBanner({ fullName, prNumber, hasAnnotations }: Walkth
               ))}
             </div>
 
-            <div className="flex items-center gap-1">
-              <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1">timeout:</span>
-              <input
-                type="number"
-                min={30}
-                max={1800}
-                step={30}
-                value={timeoutInput}
-                onChange={(e) => setTimeoutInput(e.target.value)}
-                onBlur={() => { const v = Math.max(30, Math.min(1800, Number(timeoutInput) || 300)); setStoreTimeout(v); setTimeoutInput(String(v)); }}
-                className="w-16 px-1.5 py-1 text-xs border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-primary)]"
-              />
-              <span className="text-xs text-[var(--text-secondary)]">s</span>
-            </div>
           </div>
 
           <div className="flex items-center gap-3">

@@ -21,7 +21,6 @@ interface WalkthroughState {
   error: string | null;
   familiarity: number; // 1-3
   depth: 'quick' | 'thorough';
-  timeout: number; // seconds
   available: boolean; // from capabilities
 
   // Chat state
@@ -33,7 +32,6 @@ interface WalkthroughState {
 
   setFamiliarity: (f: number) => void;
   setDepth: (d: 'quick' | 'thorough') => void;
-  setTimeout: (t: number) => void;
   generate: (fullName: string, number: number) => Promise<void>;
   cancelGenerate: () => void;
   start: () => void;
@@ -65,7 +63,6 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
   error: null,
   familiarity: loadStorage('specmap-wt-familiarity', 2),
   depth: loadStorage('specmap-wt-depth', 'quick'),
-  timeout: loadStorage('specmap-wt-timeout', 600),
   available: false,
 
   // Chat state
@@ -89,13 +86,8 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
     set({ depth: d, ...(cached ? { walkthrough: cached, currentStep: 0 } : {}) });
   },
 
-  setTimeout: (t) => {
-    localStorage.setItem('specmap-wt-timeout', JSON.stringify(t));
-    set({ timeout: t });
-  },
-
   generate: async (fullName, number) => {
-    const { familiarity, depth, timeout, cache } = get();
+    const { familiarity, depth, cache } = get();
     const key = walkthroughKey(familiarity, depth);
 
     // Return cached variant if head_sha matches (instant switch)
@@ -109,7 +101,7 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
     (get() as any)._generateController = controller;
     set({ loading: true, error: null });
     try {
-      const wt = await walkthroughApi.generate(fullName, number, familiarity, depth, timeout, controller.signal);
+      const wt = await walkthroughApi.generate(fullName, number, familiarity, depth, controller.signal);
       set((state) => ({
         walkthrough: wt,
         loading: false,
@@ -122,7 +114,7 @@ export const useWalkthroughStore = create<WalkthroughState>((set, get) => ({
       }
       let msg: string;
       if (e instanceof DOMException && e.name === 'AbortError') {
-        msg = "Generation timed out — the PR may be too large. Try 'quick' depth or increase timeout.";
+        msg = "Generation was cancelled or the connection was lost.";
       } else {
         msg = e instanceof Error ? e.message : 'Failed to generate walkthrough';
       }

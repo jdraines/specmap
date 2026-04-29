@@ -15,10 +15,10 @@ interface CodeReviewState {
   loading: boolean;
   error: string | null;
   maxIssues: number;
-  timeout: number; // seconds
   customPrompt: string;
   contextLines: number;
   chunkThreshold: number;
+  concurrency: number;
   available: boolean;
 
   // Chat state
@@ -30,10 +30,10 @@ interface CodeReviewState {
   generationProgress: string | null;
 
   setMaxIssues: (n: number) => void;
-  setTimeout: (t: number) => void;
   setCustomPrompt: (p: string) => void;
   setContextLines: (n: number) => void;
   setChunkThreshold: (n: number) => void;
+  setConcurrency: (n: number) => void;
   generate: (fullName: string, number: number, force?: boolean) => Promise<void>;
   cancelGenerate: () => void;
   start: () => void;
@@ -64,10 +64,10 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
   loading: false,
   error: null,
   maxIssues: loadStorage('specmap-cr-max-issues', 20),
-  timeout: loadStorage('specmap-cr-timeout', 600),
   customPrompt: '',
   contextLines: loadStorage('specmap-cr-context-lines', 5),
-  chunkThreshold: loadStorage('specmap-cr-chunk-threshold', 500),
+  chunkThreshold: loadStorage('specmap-cr-chunk-threshold', 1500),
+  concurrency: loadStorage('specmap-cr-concurrency', 8),
   available: false,
 
   chatExpanded: {},
@@ -82,10 +82,6 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
     set({ maxIssues: n });
   },
 
-  setTimeout: (t) => {
-    localStorage.setItem('specmap-cr-timeout', JSON.stringify(t));
-    set({ timeout: t });
-  },
 
   setCustomPrompt: (p) => set({ customPrompt: p }),
 
@@ -99,15 +95,20 @@ export const useCodeReviewStore = create<CodeReviewState>((set, get) => ({
     set({ chunkThreshold: n });
   },
 
+  setConcurrency: (n) => {
+    localStorage.setItem('specmap-cr-concurrency', JSON.stringify(n));
+    set({ concurrency: n });
+  },
+
   generate: async (fullName, number, force) => {
-    const { maxIssues, timeout, customPrompt, contextLines, chunkThreshold } = get();
+    const { maxIssues, customPrompt, contextLines, chunkThreshold, concurrency } = get();
 
     const controller = new AbortController();
     (get() as any)._generateController = controller;
     set({ loading: true, error: null, generationProgress: 'Starting...' });
     try {
       const cr = await codeReviewApi.generate(
-        fullName, number, maxIssues, timeout, contextLines, chunkThreshold,
+        fullName, number, maxIssues, contextLines, chunkThreshold, concurrency,
         customPrompt || undefined, force, controller.signal,
         (progress) => set({ generationProgress: progress.detail }),
       );

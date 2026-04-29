@@ -15,15 +15,15 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
     loading,
     error,
     maxIssues,
-    timeout,
     customPrompt,
     chunkThreshold,
+    concurrency,
     generationProgress,
     available,
     setMaxIssues,
-    setTimeout: setStoreTimeout,
     setCustomPrompt,
     setChunkThreshold,
+    setConcurrency,
     generate,
     cancelGenerate,
     start,
@@ -32,7 +32,7 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
   const elapsed = useElapsedTime(loading);
   const [maxInput, setMaxInput] = useState(String(maxIssues));
   const [chunkInput, setChunkInput] = useState(String(chunkThreshold));
-  const [timeoutInput, setTimeoutInput] = useState(String(timeout));
+  const [concInput, setConcInput] = useState(String(concurrency));
 
   if (!available) return null;
   if (active) return null;
@@ -76,16 +76,6 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
               />
             </label>
             <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
-              Timeout:
-              <input
-                type="number" min="30" max="1800" value={timeoutInput}
-                onChange={(e) => setTimeoutInput(e.target.value)}
-                onBlur={() => { const t = Math.max(30, Math.min(1800, parseInt(timeoutInput) || 600)); setTimeoutInput(String(t)); setStoreTimeout(t); }}
-                className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
-              />
-              <span className="text-[var(--text-secondary)]">s</span>
-            </label>
-            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
               Chunk at:
               <input
                 type="number" min="100" max="5000" value={chunkInput}
@@ -94,6 +84,15 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
                 className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
               />
               <span className="text-[var(--text-secondary)]">lines</span>
+            </label>
+            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+              Workers:
+              <input
+                type="number" min="1" max="16" value={concInput}
+                onChange={(e) => setConcInput(e.target.value)}
+                onBlur={() => { const n = Math.max(1, Math.min(16, parseInt(concInput) || 8)); setConcInput(String(n)); setConcurrency(n); }}
+                className="w-12 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
+              />
             </label>
             <button
               onClick={() => generate(fullName, prNumber, true)}
@@ -149,23 +148,6 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
               />
             </label>
             <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
-              Timeout:
-              <input
-                type="number"
-                min="30"
-                max="1800"
-                value={timeoutInput}
-                onChange={(e) => setTimeoutInput(e.target.value)}
-                onBlur={() => {
-                  const t = Math.max(30, Math.min(1800, parseInt(timeoutInput) || 300));
-                  setTimeoutInput(String(t));
-                  setStoreTimeout(t);
-                }}
-                className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
-              />
-              <span className="text-[var(--text-secondary)]">s</span>
-            </label>
-            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
               Chunk at:
               <input
                 type="number"
@@ -181,6 +163,22 @@ export function CodeReviewBanner({ fullName, prNumber }: CodeReviewBannerProps) 
                 className="w-16 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
               />
               <span className="text-[var(--text-secondary)]">lines</span>
+            </label>
+            <label className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+              Workers:
+              <input
+                type="number"
+                min="1"
+                max="16"
+                value={concInput}
+                onChange={(e) => setConcInput(e.target.value)}
+                onBlur={() => {
+                  const n = Math.max(1, Math.min(16, parseInt(concInput) || 8));
+                  setConcInput(String(n));
+                  setConcurrency(n);
+                }}
+                className="w-12 px-1 py-0.5 text-xs border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded"
+              />
             </label>
             <button
               onClick={() => generate(fullName, prNumber)}

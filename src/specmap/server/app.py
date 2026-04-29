@@ -603,10 +603,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         cfg = _cfg(request)
         from dataclasses import replace
         new_core = replace(cfg.core, model=model_val)
-        new_server_cfg = type(cfg)(
-            **{**vars(cfg), "core": new_core}
-        )
-        request.app.state.config = new_server_cfg
+        cfg.core = new_core
 
         return {"model": new_core.model}
 
@@ -1577,6 +1574,93 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
         return result
 
+    def _extract_changed_symbols(file_patches: list[dict]) -> list[dict]:
+        """Extract changed function/class/type/export symbols from diff patches."""
+        import re as _sym_re
+        patterns = [
+            (_sym_re.compile(r"(?:def|async def)\s+(\w+)"), "function"),
+            (_sym_re.compile(r"class\s+(\w+)"), "class"),
+            (_sym_re.compile(r"(?:export\s+(?:default\s+)?)?function\s+(\w+)"), "function"),
+            (_sym_re.compile(r"export\s+(?:const|let|var|class|interface|type)\s+(\w+)"), "export"),
+            (_sym_re.compile(r"interface\s+(\w+)"), "type"),
+            (_sym_re.compile(r"type\s+(\w+)\s*="), "type"),
+            (_sym_re.compile(r"func\s+(?:\([^)]*\)\s+)?(\w+)"), "function"),
+        ]
+        symbols: list[dict] = []
+        seen: set[str] = set()
+        for fp in file_patches:
+            patch = fp.get("patch", "")
+            for line in patch.splitlines():
+                if not (line.startswith("+") or line.startswith("-")):
+                    continue
+                if line.startswith("+++") or line.startswith("---"):
+                    continue
+                action = "added" if line.startswith("+") else "removed"
+                text = line[1:]
+                for pat, kind in patterns:
+                    m = pat.search(text)
+                    if m:
+                        name = m.group(1)
+                        key = f"{fp['filename']}:{name}"
+                        if key not in seen:
+                            seen.add(key)
+                            symbols.append({
+                                "symbol": name,
+                                "file": fp["filename"],
+                                "kind": kind,
+                                "action": action,
+                            })
+        return symbols
+
+    async def _find_cross_boundary_references(
+        provider, http_client, token, owner, repo, head_sha,
+        symbols: list[dict], chunk_files: set[str],
+    ) -> list[dict]:
+        """For each changed symbol, find references outside chunk_files."""
+        references: list[dict] = []
+        fetched_contents: dict[str, str] = {}
+
+        for sym in symbols:
+            name = sym["symbol"]
+            try:
+                tree = await provider.list_tree(http_client, token, owner, repo, head_sha)
+                all_files = [e["path"] for e in tree if e["type"] == "blob"]
+            except Exception:
+                continue
+
+            for fpath in all_files:
+                if fpath in chunk_files:
+                    continue
+                # Only check files that could plausibly import/use the symbol
+                if not any(fpath.endswith(ext) for ext in (".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".kt", ".rb", ".swift", ".c", ".cpp", ".h")):
+                    continue
+
+                if fpath not in fetched_contents:
+                    try:
+                        raw = await provider.get_file_content(
+                            http_client, token, owner, repo, fpath, head_sha,
+                        )
+                        fetched_contents[fpath] = raw.decode("utf-8", errors="replace")
+                    except Exception:
+                        continue
+
+                content = fetched_contents[fpath]
+                for i, line in enumerate(content.splitlines(), 1):
+                    if name in line:
+                        references.append({
+                            "symbol": name,
+                            "file": fpath,
+                            "line": i,
+                            "context": line.strip(),
+                            "file_content": content,
+                        })
+                        break  # One match per file per symbol is enough
+
+            if len(references) >= 20:
+                break  # Cap total references to avoid bloating prompt
+
+        return references
+
     def _chunk_file_patches(
         file_patches: list[dict],
         threshold: int = 500,
@@ -1665,7 +1749,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             if existing_cr and existing_cr.get("head_sha") == head_sha:
                 return existing_cr
 
-        async def _run_two_phase_review(prompt, chunk_patches, model, deps, all_changed_files):
+        async def _run_two_phase_review(prompt, chunk_patches, model, deps, all_changed_files, skip_phase2=False):
             """Two-phase review: toolless analysis + targeted cross-boundary check."""
             # Phase 1: Toolless review (rescue on failure, returns None if all fails)
             logger.info("Phase 1: toolless review (~%d estimated tokens)", len(prompt) // 4)
@@ -1694,37 +1778,50 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             else:
                 logger.warning("Phase 1 failed entirely — proceeding with empty issues")
 
-            # Phase 2: Cross-boundary verification (soft limit 10, rescue on failure)
-            cb_prompt = build_cross_boundary_prompt(
-                chunk_patches=chunk_patches,
-                phase1_issues=p1_issues,
-                all_changed_files=all_changed_files,
-            )
-            logger.info("Phase 2: cross-boundary check (~%d estimated tokens)", len(cb_prompt) // 4)
-            try:
-                p2_output = await resilient_agent_call(
-                    cross_boundary_agent, cb_prompt, model,
-                    rescue_agent=review_agent,
-                    deps=deps,
-                    soft_request_limit=10,
-                )
-                if p2_output is not None:
-                    for iss in p2_output.issues:
-                        p1_issues.append({
-                            "issue_number": len(p1_issues) + 1,
-                            "severity": iss.severity,
-                            "title": iss.title,
-                            "description": iss.description,
-                            "file": iss.file,
-                            "start_line": iss.start_line or 0,
-                            "end_line": iss.end_line or iss.start_line or 0,
-                            "suggested_fix": iss.suggested_fix,
-                            "category": iss.category,
-                            "reasoning": iss.reasoning,
-                        })
-                    logger.info("Phase 2 found %d additional issues", len(p2_output.issues))
-            except Exception as e:
-                logger.warning("Phase 2 cross-boundary check failed: %s", e)
+            # Phase 2: Cross-boundary verification (toolless, pre-computed references)
+            if skip_phase2:
+                logger.info("Phase 2: skipped (single-chunk PR)")
+            else:
+                chunk_file_set = {fp["filename"] for fp in chunk_patches}
+                changed_symbols = _extract_changed_symbols(chunk_patches)
+                logger.info("Phase 2: found %d changed symbols", len(changed_symbols))
+
+                if changed_symbols:
+                    cross_refs = await _find_cross_boundary_references(
+                        provider, _http(request), token, owner, repo, head_sha,
+                        changed_symbols, chunk_file_set,
+                    )
+                    logger.info("Phase 2: found %d external references", len(cross_refs))
+
+                    cb_prompt = build_cross_boundary_prompt(
+                        chunk_patches=chunk_patches,
+                        changed_symbols=changed_symbols,
+                        cross_references=cross_refs,
+                        phase1_issues=p1_issues,
+                    )
+                    logger.info("Phase 2: cross-boundary prompt (~%d estimated tokens)", len(cb_prompt) // 4)
+                    try:
+                        p2_output = await resilient_agent_call(
+                            cross_boundary_agent, cb_prompt, model,
+                            rescue_agent=review_agent,
+                        )
+                        if p2_output is not None:
+                            for iss in p2_output.issues:
+                                p1_issues.append({
+                                    "issue_number": len(p1_issues) + 1,
+                                    "severity": iss.severity,
+                                    "title": iss.title,
+                                    "description": iss.description,
+                                    "file": iss.file,
+                                    "start_line": iss.start_line or 0,
+                                    "end_line": iss.end_line or iss.start_line or 0,
+                                    "suggested_fix": iss.suggested_fix,
+                                    "category": iss.category,
+                                    "reasoning": iss.reasoning,
+                                })
+                            logger.info("Phase 2 found %d additional issues", len(p2_output.issues))
+                    except Exception as e:
+                        logger.warning("Phase 2 cross-boundary check failed: %s", e)
 
             return summary, p1_issues
 
@@ -1776,7 +1873,8 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     if fp.get("patch")
                 }
                 chat_model = _build_chat_model(cfg.core)
-                chunk_threshold = body.get("chunk_threshold", 500)
+                chunk_threshold = body.get("chunk_threshold", 1500)
+                concurrency = max(1, min(16, body.get("concurrency", 8)))
 
                 # Pre-load full file content for changed files (avoids read_file tool calls)
                 file_contents: dict[str, str] = {}
@@ -1838,13 +1936,13 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                         spec_contents=spec_contents,
                         max_issues=max_issues,
                         custom_prompt=custom_prompt,
-                        file_contents=file_contents,
                         file_tree=repo_file_tree,
                     )
                     logger.info("Code review prompt: ~%d estimated tokens", _estimate_tokens(user_prompt))
                     summary, all_issues = await _run_two_phase_review(
                         user_prompt, file_patches, chat_model,
                         _make_deps(changed_files), changed_files,
+                        skip_phase2=True,
                     )
                     # Wrap in a simple namespace for the rest of the pipeline
                     class _ReviewResult:
@@ -1854,9 +1952,9 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                     review_data.issues = all_issues
                 else:
                     n = len(chunks)
-                    yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks (max 4 concurrent)...", "chunk": 0, "total_chunks": n})
+                    yield _sse("progress", {"phase": "reviewing", "detail": f"Reviewing {n} chunks (max {concurrency} concurrent)...", "chunk": 0, "total_chunks": n})
 
-                    _chunk_sem = asyncio.Semaphore(4)
+                    _chunk_sem = asyncio.Semaphore(concurrency)
 
                     async def _review_chunk(chunk_patches: list[dict], chunk_idx: int):
                         async with _chunk_sem:
@@ -1870,7 +1968,6 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                     if sf:
                                         chunk_spec_files.add(sf)
                             chunk_specs = {k: v for k, v in spec_contents.items() if k in chunk_spec_files}
-                            chunk_contents = {k: v for k, v in file_contents.items() if k in chunk_files_inner}
                             prompt = build_chunk_review_prompt(
                                 pr_title=p.get("title", ""),
                                 head_branch=p["head_branch"],
@@ -1883,13 +1980,12 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                                 spec_contents=chunk_specs,
                                 max_issues=max_issues,
                                 custom_prompt=custom_prompt,
-                                file_contents=chunk_contents,
                                 file_tree=repo_file_tree,
                             )
                             logger.info("Chunk %d/%d prompt: ~%d estimated tokens", chunk_idx + 1, n, _estimate_tokens(prompt))
                             summary, issues = await _run_two_phase_review(
                                 prompt, chunk_patches, chat_model,
-                                _make_deps(chunk_files_inner, prompt_file_set=set(chunk_contents.keys())),
+                                _make_deps(chunk_files_inner),
                                 changed_files,
                             )
                             return summary, issues

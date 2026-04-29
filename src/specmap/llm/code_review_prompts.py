@@ -90,7 +90,6 @@ def build_code_review_prompt(
     spec_contents: dict[str, str],
     max_issues: int = 20,
     custom_prompt: str = "",
-    file_contents: dict[str, str] | None = None,
     file_tree: list[str] | None = None,
 ) -> str:
     """Build the user prompt for code review generation.
@@ -129,19 +128,9 @@ def build_code_review_prompt(
             patch = fp.get("patch", "")
             fname = fp["filename"]
             if patch:
-                parts.append(f"## {fname}\n### Diff\n```diff\n{patch}\n```\n")
+                parts.append(f"## {fname}\n```diff\n{patch}\n```\n")
             else:
                 parts.append(f"## {fname}\n(binary or empty diff)\n")
-            # Include full file content so the agent doesn't need read_file for PR files
-            if file_contents and fname in file_contents:
-                content = file_contents[fname]
-                lines = content.splitlines()
-                if len(lines) > 500:
-                    numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines[:500], 1))
-                    parts.append(f"### Full content ({len(lines)} lines, first 500 shown)\n```\n{numbered}\n```\n")
-                else:
-                    numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
-                    parts.append(f"### Full content ({len(lines)} lines)\n```\n{numbered}\n```\n")
 
     # Spec documents
     if spec_contents:
@@ -193,7 +182,6 @@ def build_chunk_review_prompt(
     spec_contents: dict[str, str],
     max_issues: int = 20,
     custom_prompt: str = "",
-    file_contents: dict[str, str] | None = None,
     file_tree: list[str] | None = None,
 ) -> str:
     """Build prompt for reviewing a single chunk of a large PR.
@@ -245,15 +233,6 @@ def build_chunk_review_prompt(
             parts.append(f"## {fname}\n### Diff\n```diff\n{patch}\n```\n")
         else:
             parts.append(f"## {fname}\n(binary or empty diff)\n")
-        if file_contents and fname in file_contents:
-            content = file_contents[fname]
-            lines = content.splitlines()
-            if len(lines) > 500:
-                numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines[:500], 1))
-                parts.append(f"### Full content ({len(lines)} lines, first 500 shown)\n```\n{numbered}\n```\n")
-            else:
-                numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
-                parts.append(f"### Full content ({len(lines)} lines)\n```\n{numbered}\n```\n")
 
     # Spec documents
     if spec_contents:
@@ -308,23 +287,18 @@ _CROSS_BOUNDARY_SYSTEM = """\
 You are a cross-boundary verification agent for a code review. Your ONLY job is to find \
 wiring issues between the reviewed code and the rest of the codebase.
 
-You receive a diff showing what changed, plus issues found by an initial reviewer. \
-Scan the diff for:
-- Changed function/method signatures (new params, renamed, return type changes)
-- Renamed or deleted exports/imports
-- Changed type definitions or interfaces
-- New required arguments on existing functions
+You receive:
+1. A diff showing what changed
+2. A list of changed symbols (functions, classes, types, exports) extracted from the diff
+3. For each changed symbol, the files outside the review chunk that reference it, \
+including the full content of those files
 
-For each change you identify, use grep_codebase to find callers/consumers OUTSIDE the \
-reviewed files. If any caller was not updated to match the change, flag it as an issue.
+Analyze the referencing code to determine if callers/consumers were properly updated \
+to match the changes. If any caller uses an outdated signature, missing parameter, \
+removed export, or changed type, flag it as an issue.
 
-You have a strict budget of 10 requests. Each tool use costs 2 requests (one to \
-call the tool, one to process results). That means ~5 tool uses maximum. Plan \
-carefully:
-- Batch file reads using the `paths` parameter to read multiple files in one call
-- Use targeted grep patterns (function names, class names) not broad searches
-- Produce your final output before exhausting your budget
-- If you find no cross-boundary issues, return an empty issues list with a brief summary
+If all callers are properly updated, or there are no external references, return an \
+empty issues list with a brief summary saying so.
 
 Do NOT re-review the code for correctness, style, or design — that was already done. \
 Focus exclusively on broken wiring between changed code and its consumers."""
@@ -332,42 +306,64 @@ Focus exclusively on broken wiring between changed code and its consumers."""
 
 def build_cross_boundary_prompt(
     chunk_patches: list[dict],
+    changed_symbols: list[dict],
+    cross_references: list[dict],
     phase1_issues: list[dict],
-    all_changed_files: list[str],
 ) -> str:
-    """Build prompt for the cross-boundary verification agent."""
+    """Build prompt for the toolless cross-boundary verification agent."""
     parts: list[str] = []
 
     parts.append("# Cross-Boundary Verification\n")
-    parts.append(
-        f"The initial review found {len(phase1_issues)} issue(s). "
-        f"Your job is to check for wiring issues between the changed code "
-        f"and the rest of the codebase.\n"
-    )
 
-    parts.append("## Changed Files in This Chunk\n")
+    if not changed_symbols:
+        parts.append(
+            "No changed function signatures, class definitions, or exports were detected "
+            "in this chunk's diff. Return an empty issues list with a brief summary.\n"
+        )
+        return "\n".join(parts)
+
+    parts.append("## Changed Symbols\n")
+    for sym in changed_symbols:
+        parts.append(
+            f"- **{sym['symbol']}** ({sym['kind']}, {sym['action']}) in `{sym['file']}`\n"
+        )
+
+    parts.append("\n## Diffs\n")
     for fp in chunk_patches:
         patch = fp.get("patch", "")
         if patch:
             parts.append(f"### {fp['filename']}\n```diff\n{patch}\n```\n")
 
+    if cross_references:
+        parts.append("## External References (files outside this chunk that use these symbols)\n")
+        for ref in cross_references:
+            parts.append(
+                f"### `{ref['symbol']}` referenced in `{ref['file']}` (line {ref['line']})\n"
+            )
+            if ref.get("file_content"):
+                content = ref["file_content"]
+                lines = content.splitlines()
+                if len(lines) > 300:
+                    numbered = "\n".join(f"{i}: {ln}" for i, ln in enumerate(lines[:300], 1))
+                    parts.append(f"```\n{numbered}\n... ({len(lines)} lines total)\n```\n")
+                else:
+                    numbered = "\n".join(f"{i}: {ln}" for i, ln in enumerate(lines, 1))
+                    parts.append(f"```\n{numbered}\n```\n")
+    else:
+        parts.append("## External References\n\nNo external references to changed symbols were found.\n")
+
     if phase1_issues:
-        parts.append("## Issues Found by Initial Reviewer\n")
+        parts.append("## Issues Found by Initial Reviewer (for context)\n")
         for iss in phase1_issues:
             parts.append(
                 f"- **{iss.get('severity', '?')}: {iss.get('title', '')}** "
                 f"[{iss.get('file', '')}:{iss.get('start_line', '?')}]\n"
             )
 
-    other_files = [f for f in all_changed_files if f not in {fp["filename"] for fp in chunk_patches}]
-    if other_files:
-        parts.append("## Other Files Changed in This PR (outside this chunk)\n")
-        parts.append("\n".join(f"- {f}" for f in other_files[:50]) + "\n")
-
     parts.append(
-        "Identify changed signatures/exports/types from the diff above. "
-        "Use grep_codebase to find callers outside these files. "
-        "Flag any that weren't updated. Return a CodeReviewResponse."
+        "Check if the external references properly handle the changed symbols. "
+        "Flag any callers/consumers that weren't updated. "
+        "Return a CodeReviewResponse."
     )
 
     return "\n".join(parts)

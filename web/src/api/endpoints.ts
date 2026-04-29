@@ -70,7 +70,6 @@ export const pulls = {
       `/api/v1/repos/${fullName}/pulls/${number}/generate-annotations`,
       { mode, force, timeout, resume, concurrency },
       onProgress ?? (() => {}),
-      ((timeout ?? 300) * 1000) + 60_000,
     ),
   clearCache: (fullName: string, number: number) =>
     apiFetch<{ status: string }>(
@@ -99,14 +98,14 @@ export const capabilities = {
 };
 
 export const walkthrough = {
-  generate: (fullName: string, number: number, familiarity: number, depth: string, timeout: number = 300, signal?: AbortSignal) =>
+  generate: (fullName: string, number: number, familiarity: number, depth: string, signal?: AbortSignal) =>
     apiFetch<Walkthrough>(
       `/api/v1/repos/${fullName}/pulls/${number}/walkthrough`,
       {
         method: 'POST',
         body: JSON.stringify({ familiarity, depth }),
       },
-      timeout * 1000 + 60_000,
+      1_800_000,
       signal,
     ),
   chat: (
@@ -130,9 +129,9 @@ export const codeReview = {
     fullName: string,
     number: number,
     maxIssues: number = 20,
-    timeout: number = 300,
-    contextLines: number = 10,
+    contextLines: number = 5,
     chunkThreshold: number = 500,
+    concurrency: number = 8,
     customPrompt?: string,
     force?: boolean,
     signal?: AbortSignal,
@@ -140,9 +139,9 @@ export const codeReview = {
   ) =>
     apiFetchCodeReviewSSE(
       `/api/v1/repos/${fullName}/pulls/${number}/code-review`,
-      { max_issues: maxIssues, context_lines: contextLines, chunk_threshold: chunkThreshold, custom_prompt: customPrompt, force },
+      { max_issues: maxIssues, context_lines: contextLines, chunk_threshold: chunkThreshold, concurrency, custom_prompt: customPrompt, force },
       onProgress ?? (() => {}),
-      timeout * 1000 + 60_000,
+      1_800_000,
       signal,
     ),
   chat: (
