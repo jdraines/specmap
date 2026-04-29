@@ -1,6 +1,6 @@
 site_name: Specmap
 site_description: Map AI-generated code changes back to spec intent
-site_url: https://specmap.dev
+site_url: https://jdraines.github.io/specmap/
 repo_url: https://github.com/jdraines/specmap
 repo_name: jdraines/specmap
 

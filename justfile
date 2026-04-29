@@ -79,13 +79,26 @@ docs-serve:
 docs-build:
     docs/.venv/bin/mkdocs build --strict
 
-# Deploy docs version (e.g., just docs-deploy 0.1)
-docs-deploy VERSION:
+# Deploy docs for current version (extracts minor from pyproject.toml)
+docs-deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+    minor=$(echo "$version" | cut -d. -f1-2)
+    echo "Deploying docs as $minor (from $version)"
+    docs/.venv/bin/mike deploy --push --update-aliases "$minor" latest
+
+# Deploy docs for a specific version (e.g., just docs-deploy-version 0.3)
+docs-deploy-version VERSION:
     docs/.venv/bin/mike deploy --push --update-aliases {{VERSION}} latest
 
 # List deployed doc versions
 docs-versions:
     docs/.venv/bin/mike list
+
+# Delete a deployed doc version (e.g., just docs-delete 0.3)
+docs-delete VERSION:
+    docs/.venv/bin/mike delete --push {{VERSION}}
 
 # --- Functional Tests ---
 

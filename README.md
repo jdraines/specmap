@@ -72,7 +72,7 @@ Or add the MCP server to your coding agent (`.mcp.json` in your project):
 }
 ```
 
-See the [full documentation](https://specmap.dev) for configuration, CLI commands, and deployment.
+See the [full documentation](https://jdraines.github.io/specmap/) for configuration, CLI commands, and deployment.
 
 ## Features
 
