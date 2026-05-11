@@ -83,10 +83,12 @@ docs-deploy:
     minor=$(echo "$version" | cut -d. -f1-2)
     echo "Deploying docs as $minor (from $version)"
     uv run --with-requirements docs/requirements.txt --no-project -- mike deploy --push --update-aliases "$minor" latest
+    uv run --with-requirements docs/requirements.txt --no-project -- mike set-default --push latest
 
 # Deploy docs for a specific version (e.g., just docs-deploy-version 0.3)
 docs-deploy-version VERSION:
     uv run --with-requirements docs/requirements.txt --no-project -- mike deploy --push --update-aliases {{VERSION}} latest
+    uv run --with-requirements docs/requirements.txt --no-project -- mike set-default --push latest
 
 # List deployed doc versions
 docs-versions:
